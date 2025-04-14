@@ -450,6 +450,7 @@
       nBasisKet = ket%nBasis
       nBasisPairs = nBasisBra*nBasisKet
       nPrimPairs  = bra%nPrim*ket%nPrim
+      if(Allocated(basisIntegrals)) DeAllocate(basisIntegrals)
       Allocate(basisIntegrals(nBasisBra,nBasisKet))
       Allocate(indexBasisPairs(2,nBasisPairs),indexPrimPairs(2,nPrimPairs))
       Allocate(primBasisInts(nPrimPairs,3,nBasisPairs),primCoeffs(nPrimPairs,3))
@@ -486,16 +487,40 @@
           do ixyz = 1,3
             tmpSij  = -1.0
             haveSij = .false.
+            write(iOut,*)
+            write(iOut,'(1x,a,i5,i5,i5)')'i,j,ixyz: ',i,j,ixyz
+            write(iOut,'(1x,a,i5,3x,i5)')' lArraysVals: ',bra%lArrays(ixyz,indexBasisPairs(1,i)),ket%lArrays(ixyz,indexBasisPairs(2,i))
             call MQC_Overlap_Primitive_XYZ_OS(  &
-              bra%lArrays(ixyz,indexPrimPairs(1,j)),  &
-              ket%lArrays(ixyz,indexPrimPairs(2,j)),  &
+              bra%lArrays(ixyz,indexBasisPairs(1,i)),  &
+              ket%lArrays(ixyz,indexBasisPairs(2,i)),  &
               mu,p,xAB(ixyz),xPA(ixyz),xPB(ixyz),tmpSij,haveSij)
+            call mqc_print(tmpSij,iOut,header='tmpSij in new routine:')
             primBasisInts(j,ixyz,i) = tmpSij(  &
-              bra%lArrays(ixyz,indexPrimPairs(1,j)),  &
-              ket%lArrays(ixyz,indexPrimPairs(2,j)))
+              bra%lArrays(ixyz,indexBasisPairs(1,i))+1,  &
+              ket%lArrays(ixyz,indexBasisPairs(2,i))+1)
+            write(iOut,*)' Int saved: ',primBasisInts(j,ixyz,i)
           endDo
         endDo
       endDo
+
+
+ 1000 format(1x,'Basis Pair: (',i2,' | ',i2,')')
+ 1010 format(3x,'iPrim      IntX          IntY          IntZ')
+ 1020 format(4x,i3,4x,f8.5,6x,f8.5,6x,f8.5)
+      write(iOut,*)
+      write(iOut,*)' Hrant - Here is primBasisInts...'
+      write(iOut,*)' nBasisPairs = ',nBasisPairs
+      write(iOut,*)' nPrimPairs  = ',nPrimPairs
+      do i = 1,nBasisPairs
+        write(iOut,1000) indexBasisPairs(1,i),indexBasisPairs(2,i)
+        write(iOut,1010)
+        do j = 1,nPrimPairs
+          write(iOut,1020) j,primBasisInts(j,1,i),primBasisInts(j,2,i),primBasisInts(j,3,i)
+        endDo
+      endDo
+
+      write(iOut,*)
+      write(iOut,*)
 
 !HRANT
 

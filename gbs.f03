@@ -24,6 +24,7 @@
       integer(kind=int64)::nCGTF=0,iCGTF=0,nBasis
       integer(kind=int64),dimension(:),allocatable::CGTF2IBasis,lArray
       real(kind=real64),dimension(:),allocatable::normConstants
+      real(kind=real64),dimension(:,:),allocatable::basisIntegrals
       type(mqc_cgtf)::bfTmp
       type(mqc_cgtf),dimension(:),allocatable::basisSetList
       type(mqc_linkedList),pointer::basisSet,basisSetCurrentNode
@@ -155,6 +156,10 @@
       Allocate(normConstants(nBasis))
       if(Allocated(lArray)) DeAllocate(lArray)
 
+!
+!     Test routine MQC_Overlap_CGFT.
+!
+      call MQC_Overlap_CGFT(bf1,bf1,basisIntegrals)
 
       goto 999
 !hph+
