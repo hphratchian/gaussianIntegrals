@@ -12,6 +12,7 @@
 !
 !
       USE iso_fortran_env
+      USE MQC_Integrals
       implicit none
       integer,parameter::iOut=6
       integer(kind=real64)::nArguments
