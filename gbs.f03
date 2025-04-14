@@ -18,7 +18,8 @@
       type(mqc_cgtf)::bf1,bf2,bf3,bf4
 !
       integer(kind=int64)::ixyz,jxyz
-      real(kind=real64)::mu,p,xAB,xPA,xPB
+      real(kind=real64)::mu,p
+      real(kind=real64),dimension(3)::xAB,xPA,xPB
 !
       integer(kind=int64)::nCGTF=0,iCGTF=0,nBasis
       integer(kind=int64),dimension(:),allocatable::CGTF2IBasis,lArray
@@ -87,22 +88,23 @@
       xPB =  xAB*bf1%alpha(1)/p
       write(iOut,*)
       write(iOut,*)' Intermediates...1:'
-      write(iOut,*)'    mu   = ',mu
-      write(iOut,*)'    p    = ',p
-      write(iOut,*)'    xAB  = ',xAB
-      write(iOut,*)'    xPA  = ',xPA
-      write(iOut,*)'    xPB  = ',xPB
+      write(iOut,*)'    mu     = ',mu
+      write(iOut,*)'    p      = ',p
+      write(iOut,*)'    xAB(1) = ',xAB(1)
+      write(iOut,*)'    xPA(1) = ',xPA(1)
+      write(iOut,*)'    xPB(1) = ',xPB(1)
       call MQC_Overlap_Distribution_Primitive_XYZ_Constants(bf1,bf1, &
         1,1,mu,p,xAB,xPA,xPB)
       write(iOut,*)
       write(iOut,*)' Intermediates...2:'
-      write(iOut,*)'    mu   = ',mu
-      write(iOut,*)'    p    = ',p
-      write(iOut,*)'    xAB  = ',xAB
-      write(iOut,*)'    xPA  = ',xPA
-      write(iOut,*)'    xPB  = ',xPB
+      write(iOut,*)'    mu     = ',mu
+      write(iOut,*)'    p      = ',p
+      write(iOut,*)'    xAB(1) = ',xAB(1)
+      write(iOut,*)'    xPA(1) = ',xPA(1)
+      write(iOut,*)'    xPB(1) = ',xPB(1)
 
-      call MQC_Overlap_Primitive_XYZ_OS(ixyz,jxyz,mu,p,xAB,xPA,xPB,tmpSij,haveSij)
+      call MQC_Overlap_Primitive_XYZ_OS(ixyz,jxyz,mu,p,xAB(1),xPA(1),  &
+        xPB(1),tmpSij,haveSij)
       call mqc_print(haveSij,iOut,header='The HaveSij Matrix:')
       call mqc_print(tmpSij,iOut,header='The Sij Matrix:')
 

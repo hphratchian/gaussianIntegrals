@@ -403,7 +403,8 @@
       implicit none
       class(MQC_CGTF),intent(in)::Ga,Gb
       integer(kind=int64),intent(in)::iPrimA,iPrimB
-      real(kind=real64),intent(out)::mu,p,xAB,xPA,xPB
+      real(kind=real64),intent(out)::mu,p
+      real(kind=real64),dimension(3),intent(out)::xAB,xPA,xPB
 !
 !     Do the work...
 !
@@ -433,32 +434,76 @@
       implicit none
       class(MQC_CGTF),intent(in)::bra,ket
       real(kind=real64),dimension(:,:),allocatable,intent(out)::basisIntegrals
-      integer(kind=int64)::iBasisBra,iBasisKet,nBasisBra,nBasisKet
-      real(kind=real64),dimension(:),allocatable::primInts,primCoeffs
-      real(kind=real64),dimension(:,:),allocatable::basisIntegralsX,  &
-        basisIntegralsY,basisIntegralsZ
+      integer(kind=int64)::i,j,k,ixyz,iBasisBra,iBasisKet,nBasisBra,  &
+        nBasisKet,nBasisPairs,nPrimPairs
+      integer(kind=int64),dimension(:,:),allocatable::indexBasisPairs,  &
+        indexPrimPairs
+      real(kind=real64)::mu,p
+      real(kind=real64),dimension(3)::xAB,xPA,xPB
+      real(kind=real64),dimension(:,:),allocatable::tmpSij,primCoeffs
+      real(kind=real64),dimension(:,:,:),allocatable::primBasisInts
+      logical,dimension(:,:),allocatable::haveSij
 !
-!     Figure out the dimension of basisIntegrals and allocate the matrix.
+!     Calculate nBasisPairs and nPrimPairs. Then allocate some arrays.
 !
       nBasisBra = bra%nBasis
       nBasisKet = ket%nBasis
-      Allocate(basisIntegrals(nBasisBra,nBasisKet),  &
-        basisIntegralsX(nBasisBra,nBasisKet),  &
-        basisIntegralsY(nBasisBra,nBasisKet),  &
-        basisIntegralsZ(nBasisBra,nBasisKet))
+      nBasisPairs = nBasisBra*nBasisKet
+      nPrimPairs  = bra%nPrim*ket%nPrim
+      Allocate(basisIntegrals(nBasisBra,nBasisKet))
+      Allocate(indexBasisPairs(2,nBasisPairs),indexPrimPairs(2,nPrimPairs))
+      Allocate(primBasisInts(nPrimPairs,3,nBasisPairs),primCoeffs(nPrimPairs,3))
 !
-!     Form the overlap distribution terms and call the overlap primitives OS
-!     routine for x, y, and z factorized terms.
+!     Fill indexBasisPairs and indexPrimPairs.
 !
-      do iBasisBra = 1,nBasisBra
-        do iBasisKet = 1,nBasisKet
+      k = 0
+      do j = 1,nBasisKet
+        do i = 1,nBasisBra
+          k = k+1
+          indexBasisPairs(1,k) = i
+          indexBasisPairs(2,k) = j
+        endDo
+      endDo
+      k = 0
+      do j = 1,ket%nPrim
+        do i = 1,bra%nPrim
+          k = k+1
+          indexPrimPairs(1,k) = i
+          indexPrimPairs(2,k) = j
+        endDo
+      endDo
+!
+!     Work through the basis pairs and prim pairs to build up all of the overlap
+!     integrals. We do these integrals in x, y, and z directions separatly and
+!     then contract.
+!
+      Allocate(tmpSij(bra%angularMomentum+1,ket%angularMomentum+1),  &
+        haveSij(bra%angularMomentum+1,ket%angularMomentum+1))
+      do i = 1,nBasisPairs
+        do j = 1,nPrimPairs
+          call MQC_Overlap_Distribution_Primitive_XYZ_Constants(bra,ket, &
+            indexPrimPairs(1,j),indexPrimPairs(2,j),mu,p,xAB,xPA,xPB)
+          do ixyz = 1,3
+            tmpSij  = -1.0
+            haveSij = .false.
+            call MQC_Overlap_Primitive_XYZ_OS(  &
+              bra%lArrays(ixyz,indexPrimPairs(1,j)),  &
+              ket%lArrays(ixyz,indexPrimPairs(2,j)),  &
+              mu,p,xAB(ixyz),xPA(ixyz),xPB(ixyz),tmpSij,haveSij)
+            primBasisInts(j,ixyz,i) = tmpSij(  &
+              bra%lArrays(ixyz,indexPrimPairs(1,j)),  &
+              ket%lArrays(ixyz,indexPrimPairs(2,j)))
+          endDo
+        endDo
+      endDo
 
 !HRANT
 
-      call MQC_Overlap_Distribution_Primitive_XYZ_Constants(bf1,bf1, &
-        1,1,mu,p,xAB,xPA,xPB)
-      call MQC_Overlap_Primitive_XYZ_OS(ixyz,jxyz,mu,p,xAB,xPA,xPB,tmpSij,haveSij)
+!      call MQC_Overlap_Distribution_Primitive_XYZ_Constants(bf1,bf1, &
+!        1,1,mu,p,xAB,xPA,xPB)
+!      call MQC_Overlap_Primitive_XYZ_OS(ixyz,jxyz,mu,p,xAB,xPA,xPB,tmpSij,haveSij)
 
+      end subroutine MQC_Overlap_CGFT
 
 
 !
