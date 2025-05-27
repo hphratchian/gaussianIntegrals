@@ -12,7 +12,8 @@ RunF         = pgfortran -i8 -r8 -Mallocatable=03
 #
 # The 'all' rule.
 #
-all: basisCounting.exe gbs.exe
+#hph all: basisCounting.exe gbs.exe
+all: gbs.exe
 
 #
 # Generic rules for building module (*.mod) and object (*.o) files.
@@ -28,14 +29,16 @@ mqc_integrals1.mod: mqc_integrals1.F03 $(MQCLIB)/libmqc.a
 
 #
 # Generic rule for building general executable program (*.exe) from a standard
-# f90 source (*.f90) file.
+# f03 source (*.f03) file.
 #
 
-%.exe: %.f03 mqc_integrals1.mod $(MQCLIB)/libmqc.a
+%.exe: %.f03 mqc_integrals1.mod gbs_mod.f03 $(MQCLIB)/libmqc.a
 	$(RunF) $(LIBS) $(Prof) -I$(MQCMODS) -o $*.exe $*.f03 mqc_integrals1.o $(MQCLIB)/libmqc.a
 
 #
 # Some clean rules.
 #
+clean:
+	(rm -f *.o ; rm -f *.mod ; rm -f *.exe)	
 cleanGTests:
 	(cd GTests ; rm -f *.chk ; rm -f *.mat ; rm -f *.log)	

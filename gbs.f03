@@ -1,3 +1,4 @@
+Include "gbs_mod.f03"
       program gbs
 !
 !     This program tests the MQC_Integrals module.
@@ -7,15 +8,17 @@
 !     University of California, Merced
 !
 !
-      USE iso_fortran_env
-      USE MQC_Integrals1
+      USE gbs_mod
       implicit none
-      integer,parameter::lVal=1
+      integer,parameter::lVal=0
       integer::i,j,k,l
       logical::fail=.false.,atEnd
       real(kind=real64),dimension(lVal+1,lVal+1)::tmpSij=float(0)
+      character(len=256)::fafName
       logical,dimension(lVal+1,lVal+1)::haveSij=.false.
       type(mqc_cgtf)::bf1,bf2,bf3,bf4
+      type(mqc_gaussian_unformatted_matrix_file)::faf
+      type(MQC_basisSet)::basisSet
 !
       integer(kind=int64)::ixyz,jxyz
       real(kind=real64)::mu,p
@@ -25,9 +28,6 @@
       integer(kind=int64),dimension(:),allocatable::CGTF2IBasis,lArray
       real(kind=real64),dimension(:),allocatable::normConstants
       real(kind=real64),dimension(:,:),allocatable::basisIntegrals
-      type(mqc_cgtf)::bfTmp
-      type(mqc_cgtf),dimension(:),allocatable::basisSetList
-      type(mqc_linkedList),pointer::basisSet,basisSetCurrentNode
 !
 !     Format statements.
 !
@@ -38,6 +38,11 @@
 !
       fail = .false.
       write(iOut,1000)
+!
+!     Read the FAF name from the command line and load the object faf.
+!
+      call get_command_argument(1,fafName)
+      call faf%load(fafName)
 !
 !     Fill bf1-bf4 with info and then print them.
 !
@@ -53,12 +58,10 @@
       call MQC_CGTF_print(bf2,iOut)
       call MQC_CGTF_print(bf3,iOut)
       call MQC_CGTF_print(bf4,iOut)
-
       call mqc_print(MQC_CGTF_extendLArray(bf1),iOut,header='bf1 lArray:',  &
         blank_at_top=.true.,blank_at_bottom=.true.)
       call mqc_print(MQC_CGTF_extendLArray(bf2),iOut,header='bf2 lArray:',  &
         blank_at_top=.true.,blank_at_bottom=.true.)
-
 
 !
 !     Try out the shell2nBasis function.
@@ -109,76 +112,55 @@
       call mqc_print(haveSij,iOut,header='The HaveSij Matrix:')
       call mqc_print(tmpSij,iOut,header='The Sij Matrix:')
 
-!
-!     Try to using the basisSet linked list.
-!
-      call LinkedList_Push(basisSet,bf1)
-      call LinkedList_Push(basisSet,bf2)
-      call LinkedList_Push(basisSet,bf3)
-      call LinkedList_Push(basisSet,bf4)
-
-      write(iOut,*)
-      write(iOut,*)
-      write(iOut,*)' Hrant - Trying out the linked list approach for building up the basis set...'
-      basisSetCurrentNode => basisSet
-      call LinkedList_Return_CGTF_Value(basisSetCurrentNode,bfTmp)
-      call MQC_CGTF_print(bfTmp,iOut)
-      nCGTF = nCGTF+1
-      call LinkedList_GetNext(basisSetCurrentNode,atEnd,last_looks_ahead=.false.)
-      do while(.not.atEnd)
-        call LinkedList_Return_CGTF_Value(basisSetCurrentNode,bfTmp)
-        call MQC_CGTF_print(bfTmp,iOut)
-        nCGTF = nCGTF+1
-        call LinkedList_GetNext(basisSetCurrentNode,atEnd,last_looks_ahead=.false.)
-      endDo
-      write(iOut,*)
-      write(iOut,*)' Hrant - nCGTF = ',nCGTF
-!
-      Allocate(basisSetList(nCGTF),CGTF2IBasis(nCGTF))
-      iCGTF = 0
-      basisSetCurrentNode => basisSet
-      call LinkedList_Return_CGTF_Value(basisSetCurrentNode,bfTmp)
-      iCGTF = iCGTF+1
-      basisSetList(iCGTF) = bfTmp
-      call LinkedList_GetNext(basisSetCurrentNode,atEnd,last_looks_ahead=.false.)
-      do while(.not.atEnd)
-        call LinkedList_Return_CGTF_Value(basisSetCurrentNode,bfTmp)
-        iCGTF = iCGTF+1
-        basisSetList(iCGTF) = bfTmp
-        call LinkedList_GetNext(basisSetCurrentNode,atEnd,last_looks_ahead=.false.)
-      endDo
-      nBasis = 0
-      do i = 1,nCGTF
-        CGTF2IBasis(i) = nBasis+1
-        nBasis = nBasis+basisSetList(i)%shell2nBasis()
-      endDo
-      write(iOut,*)' Hrant - nBasis = ',nBasis
-      Allocate(normConstants(nBasis))
-      if(Allocated(lArray)) DeAllocate(lArray)
 
 !
 !     Test routine MQC_Overlap_CGFT.
 !
+      write(IOut,*)
+      write(iOut,*)' ----------------------------------------------'
+      write(iOut,*)' Running overlap of 1 with 1.'
       call MQC_Overlap_CGFT(bf1,bf1,basisIntegrals)
-
-      goto 999
-!hph+
-      goto 999
-!hph-
+!      write(IOut,*)
+!      write(iOut,*)' Running overlap of 2 with 2.'
+!      call MQC_Overlap_CGFT(bf2,bf2,basisIntegrals)
+!      write(IOut,*)
+!      write(iOut,*)' Running overlap of 1 with 2.'
+!      call MQC_Overlap_CGFT(bf1,bf2,basisIntegrals)
+      write(IOut,*)
+      write(iOut,*)' ----------------------------------------------'
+      write(iOut,*)' Running overlap of 1 with 3.'
+      call MQC_Overlap_CGFT(bf1,bf3,basisIntegrals)
+!      write(IOut,*)
+!      write(iOut,*)' Running overlap of 1 with 4.'
+!      call MQC_Overlap_CGFT(bf1,bf4,basisIntegrals)
 
 
 !
-!     Work on the logic for building the set of lVectors given a total angular
-!     momentum.
+!     Try reading a basis set from faf.
 !
+      call loadGaussianBasisSet(faf,basisSet)
+
       write(iOut,*)
-      l = 2
-      do i = l,0,-1
-        do j = (l-i),0,-1
-          k = l-i-j
-          write(iOut,*)i,j,k
-        endDo
-      endDo
+      write(iOut,*)
+      write(iOut,*)' Using Basis Set Object...'
+      write(IOut,*)
+      write(iOut,*)' ----------------------------------------------'
+      write(iOut,*)' Running overlap of 1 with 1.'
+      call MQC_Overlap_CGFT(basisSet%shells(1),basisSet%shells(1),basisIntegrals)
+      write(IOut,*)
+      write(iOut,*)' ----------------------------------------------'
+      write(iOut,*)' Running overlap of 1 with 2.'
+      call MQC_Overlap_CGFT(basisSet%shells(1),basisSet%shells(2),basisIntegrals)
+      write(IOut,*)
+      write(iOut,*)' ----------------------------------------------'
+      write(iOut,*)' Running overlap of 2 with 1.'
+      call MQC_Overlap_CGFT(basisSet%shells(2),basisSet%shells(1),basisIntegrals)
+      write(IOut,*)
+      write(iOut,*)' ----------------------------------------------'
+      write(iOut,*)' Running overlap of 2 with 2.'
+      call MQC_Overlap_CGFT(basisSet%shells(2),basisSet%shells(2),basisIntegrals)
+      write(IOut,*)
+      write(iOut,*)' ----------------------------------------------'
 
 !
 !     The end of the program.
