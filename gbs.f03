@@ -27,7 +27,8 @@ Include "gbs_mod.f03"
       integer(kind=int64)::nCGTF=0,iCGTF=0,nBasis
       integer(kind=int64),dimension(:),allocatable::CGTF2IBasis,lArray
       real(kind=real64),dimension(:),allocatable::normConstants
-      real(kind=real64),dimension(:,:),allocatable::basisIntegrals
+      real(kind=real64),dimension(:,:),allocatable::basisIntegrals,  &
+        overlapMatrix
 !
 !     Format statements.
 !
@@ -161,6 +162,9 @@ Include "gbs_mod.f03"
       call MQC_Overlap_CGFT(basisSet%shells(2),basisSet%shells(2),basisIntegrals)
       write(IOut,*)
       write(iOut,*)' ----------------------------------------------'
+
+      overlapMatrix = basisSetOverlapMatrix(basisSet)
+      call mqc_print(overlapMatrix,iOut,header='overlap matrix')
 
 !
 !     The end of the program.

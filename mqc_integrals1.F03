@@ -88,7 +88,7 @@
 !--------------------------------------------------------------------------
 !
 !
-!PROCEDURE MQC_CGTG_init
+!PROCEDURE MQC_CGTF_init
       subroutine MQC_CGTF_init(myCGTF,angularMomentum,center,coefficients,  &
         alphas)
 !
@@ -113,6 +113,8 @@
 !     Fill scalars and center array. Also, allocate the allocatable arrays in
 !     the object. Also, set the initialization flage to TRUE.
 !
+      if(angularMomentum.lt.0)  &
+        call mqc_error('MQC_CGTF_init: Negative angular momentum sent.')
       myCGTF%angularMomentum = angularMomentum
       myCGTF%nPrim           = Size(coefficients)
       myCGTF%center          = center
@@ -146,17 +148,11 @@
 !     Finalize the normalization constant(s).
 !
       call MQC_Overlap_CGFT(myCGTF,myCGTF,basisIntegrals)
-      write(iOut,*)
-      write(iOut,*)' Hrant - self-overlap...'
       do i = 1,myCGTF%nBasis
-!        write(iOut,*) i,basisIntegrals(i,i)
         myCGTF%primitiveNorm(:,i) =  &
           myCGTF%primitiveNorm(:,i)/sqrt(basisIntegrals(i,i))
       endDo
-
-
       DeAllocate(basisIntegrals)
-
 !
       return
       end subroutine MQC_CGTF_init
@@ -260,11 +256,68 @@
       end subroutine MQC_basisSet_addShell
 
 !
+!PROCEDURE MQC_Integrals_SetDEBUG
+      subroutine MQC_Integrals_SetDEBUG(setDebugValue)
+!
+!     This subroutine is called to set a Module-Wide DEBUG flag to .TRUE. or
+!     .FALSE.
+!
+!     H. P. Hratchian, 2025.
+!
+!
+      implicit none
+      logical,intent(IN)::setDebugValue
+!
+      MQC_Integrals_DEBUG = setDebugValue
+!
+      return
+      end subroutine MQC_Integrals_SetDEBUG
+!
 !--------------------------------------------------------------------------
 !                                                                         |
 !     HIGH LEVEL PROCEDURES                                               |
 !                                                                         |
 !--------------------------------------------------------------------------
+!
+!PROCEDURE basisSetOverlapMatrix
+      function basisSetOverlapMatrix(myBasisSet) result(overlapMatrix)
+!
+!     This function computes the overlap matrix based on basisSet in the bra and
+!     ket.
+!
+!     H. P. Hratchian, 2025.
+!
+!
+      implicit none
+      class(MQC_basisSet)::myBasisSet
+      real(kind=real64),dimension(:,:),allocatable::integralBlock,  &
+        overlapMatrix
+      integer(kind=int64)::i,j,iRowStart,iColumnStart,iRowEnd,iColumnEnd
+!
+!     Loop over shells in the basis set object and fill the overlap matrix in
+!     blocks.
+!
+      write(iOut,*)
+      write(iOut,*)
+      Allocate(overlapMatrix(myBasisSet%nBasis,myBasisSet%nBasis))
+      iRowStart = 1
+      do i = 1,myBasisSet%nShells
+        iColumnStart = 1
+        do j = 1,myBasisSet%nShells
+          call MQC_Overlap_CGFT(myBasisSet%shells(i),  &
+            myBasisSet%shells(j),integralBlock)
+          iRowEnd = iRowStart+Size(integralBlock,1)-1
+          iColumnEnd = iColumnStart+Size(integralBlock,2)-1
+          overlapMatrix(iRowStart:iRowEnd,iColumnStart:iColumnEnd) =  &
+            integralBlock
+          iColumnStart = iColumnEnd + 1
+        endDo
+        iRowStart = iRowEnd + 1
+      endDo
+!
+      return
+      end function basisSetOverlapMatrix
+
 !
 !PROCEDURE LinkedList_Return_CGTF_Value
       subroutine LinkedList_Return_CGTF_Value(LL_Cur,Return_Value)
@@ -541,6 +594,11 @@
       real(kind=real64),dimension(:,:,:),allocatable::primBasisInts
       logical,dimension(:,:),allocatable::haveSij
 !
+ 1000 format(1x,'Basis Pair: (',i2,' | ',i2,') = ',f8.5)
+ 1010 format(3x,'iPrim      IntX          IntY          IntZ        IntTot')
+ 1020 format(4x,i3,4x,f8.5,6x,f8.5,6x,f8.5,6x,f8.5)
+ 1030 format(/,/)
+!
 !     Calculate nBasisPairs and nPrimPairs. Then allocate some arrays.
 !
       if(MQC_Integrals_DEBUG) then
@@ -612,30 +670,23 @@
       endDo
 
 
- 1000 format(1x,'Basis Pair: (',i2,' | ',i2,') = ',f8.5)
- 1010 format(3x,'iPrim      IntX          IntY          IntZ        IntTot')
- 1020 format(4x,i3,4x,f8.5,6x,f8.5,6x,f8.5,6x,f8.5)
-      write(iOut,*)
-      write(iOut,*)' Hrant - Here is primBasisInts...'
-      write(iOut,*)' nBasisPairs = ',nBasisPairs
-      write(iOut,*)' nPrimPairs  = ',nPrimPairs
       do i = 1,nBasisPairs
         basisIntegrals(indexBasisPairs(1,i),indexBasisPairs(2,i)) =  &
           dot_product(primCoeffs(:,i),primBasisIntsTot(:,i))
-        write(iOut,1000) indexBasisPairs(1,i),indexBasisPairs(2,i),  &
-          dot_product(primCoeffs(:,i),primBasisIntsTot(:,i))
-        write(iOut,1010)
-        do j = 1,nPrimPairs
-          write(iOut,1020) j,primBasisInts(j,1,i),primBasisInts(j,2,i),  &
-            primBasisInts(j,3,i),primBasisIntsTot(j,i)
-        endDo
+        if(MQC_Integrals_DEBUG) then
+          write(iOut,1000) indexBasisPairs(1,i),indexBasisPairs(2,i),  &
+            dot_product(primCoeffs(:,i),primBasisIntsTot(:,i))
+          write(iOut,1010)
+          do j = 1,nPrimPairs
+            write(iOut,1020) j,primBasisInts(j,1,i),primBasisInts(j,2,i),  &
+              primBasisInts(j,3,i),primBasisIntsTot(j,i)
+          endDo
+        endIf
       endDo
-      write(iOut,*)
-      write(iOut,*)
-
+      if(MQC_Integrals_DEBUG) write(iOut,1030)
+!
       return
       end subroutine MQC_Overlap_CGFT
-
 
 !
 !PROCEDURE MQC_Overlap_Primitive_XYZ_OS
