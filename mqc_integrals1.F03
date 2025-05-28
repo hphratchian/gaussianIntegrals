@@ -356,8 +356,6 @@
 !     Loop over shells in the basis set object and fill the overlap matrix in
 !     blocks.
 !
-      write(iOut,*)
-      write(iOut,*)
       Allocate(overlapMatrix(myBasisSet%nBasis,myBasisSet%nBasis))
       iRowStart = 1
       do i = 1,myBasisSet%nShells
@@ -866,10 +864,7 @@
 !
 !     0,0
       if(ixyz.eq.0.and.jxyz.eq.0) then
-        if(haveSij(1,1)) then
-          write(*,*)' Hrant - asked for a value I already have (0,0).'
-          return
-        endIf
+        if(haveSij(1,1)) return
         Sij(1,1) = SQRT(pi/p)*exp(-mu*XAB**2)
         haveSij(1,1) = .true.
 !
