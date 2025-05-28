@@ -6,7 +6,7 @@ MQCMODS      = $(MQCDir)/NVidia/mod
 MQCLIB       = $(MQCDir)/NVidia/lib
 LIBS         = -llapack -lblas -L$(MQCLIB)
 F03Flags     = 
-RunF         = pgfortran -i8 -r8 -Mallocatable=03
+RunF         = pgfortran -i8 -r8 -Mallocatable=03 -mp
 #RunF         = pgfortran -i8 -r8
 #
 #

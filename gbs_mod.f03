@@ -69,6 +69,7 @@
         elseIf(shellTypes(i).eq.-1) then
           nShellsFull = nShellsFull+4
         else
+          write(iOut,*)' shellTypes(i) = ',shellTypes(i)
           call mqc_error('Invalid shell type in loadGaussianBasisSet.')
         endIf
       endDo
@@ -104,6 +105,53 @@
 !
       return
       end subroutine loadGaussianBasisSet
+
+!
+!PROCEDURE setup_quadrature_trapezoid3d
+      subroutine setup_quadrature_trapezoid3d(nPoints,stepSize,origin,  &
+        quadGrid,quadWeights)
+!
+!     This subroutine generates a 3D trapezoidal quadrature grid and weights
+!     over a cube with uniform spacing.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+!
+      implicit none
+      integer(kind=int64),intent(in)::nPoints
+      real(kind=real64),intent(in)::stepSize
+      real(kind=real64),dimension(3),intent(in)::origin
+      real(kind=real64),dimension(3,nPoints**3),intent(out)::quadGrid
+      real(kind=real64),dimension(nPoints**3),intent(out)::quadWeights
+      integer(kind=int64)::i,j,k,idx
+      real(kind=real64)::wx,wy,wz
+      real(kind=real64)::x,y,z
+!
+      idx = 0
+      do k = 1, nPoints
+        z = origin(3) + (k - 1) * stepSize
+        wz = stepSize
+        if (k == 1 .or. k == nPoints) wz = 0.5d0 * stepSize
+        do j = 1, nPoints
+          y = origin(2) + (j - 1) * stepSize
+          wy = stepSize
+          if (j == 1 .or. j == nPoints) wy = 0.5d0 * stepSize
+          do i = 1, nPoints
+            x = origin(1) + (i - 1) * stepSize
+            wx = stepSize
+            if (i == 1 .or. i == nPoints) wx = 0.5d0 * stepSize
+            idx = idx + 1
+            quadGrid(1,idx) = x
+            quadGrid(2,idx) = y
+            quadGrid(3,idx) = z
+            quadWeights(idx) = wx * wy * wz
+          end do
+        end do
+      end do
+!
+      return
+      end subroutine setup_quadrature_trapezoid3d
 
 
       end module gbs_mod

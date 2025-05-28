@@ -8,27 +8,31 @@ Include "gbs_mod.f03"
 !     University of California, Merced
 !
 !
+      USE OMP_LIB
       USE gbs_mod
       implicit none
       integer,parameter::lVal=0
       integer::i,j,k,l
       logical::fail=.false.,atEnd
-      real(kind=real64),dimension(lVal+1,lVal+1)::tmpSij=float(0)
+      real(kind=real64),dimension(5,5)::tmpSij=float(0)
       character(len=256)::fafName
-      logical,dimension(lVal+1,lVal+1)::haveSij=.false.
+      logical,dimension(5,5)::haveSij=.false.
       type(mqc_cgtf)::bf1,bf2,bf3,bf4
       type(mqc_gaussian_unformatted_matrix_file)::faf
-      type(MQC_basisSet)::basisSet
+      type(mqc_basisset)::basisSet
 !
       integer(kind=int64)::ixyz,jxyz
       real(kind=real64)::mu,p
       real(kind=real64),dimension(3)::xAB,xPA,xPB
 !
-      integer(kind=int64)::nCGTF=0,iCGTF=0,nBasis
-      integer(kind=int64),dimension(:),allocatable::CGTF2IBasis,lArray
-      real(kind=real64),dimension(:),allocatable::normConstants
+      integer(kind=int64)::nCGTF=0,iCGTF=0,nBasis,nGridPoints=401,nOMP
+      real(kind=real64)::tStart,tEnd
+      real(kind=real64),dimension(:),allocatable::basisValues
       real(kind=real64),dimension(:,:),allocatable::basisIntegrals,  &
         overlapMatrix
+      real(kind=real64),dimension(:),allocatable::quadWeights,quadValues
+      real(kind=real64),dimension(:,:),allocatable::quadGrid,moCoeffs
+      type(MQC_Variable)::tmp
 !
 !     Format statements.
 !
@@ -37,6 +41,9 @@ Include "gbs_mod.f03"
 !
 !     Begin the program.
 !
+      call CPU_TIME(tStart)
+      nOMP=24
+!$    call omp_set_num_threads(nOMP)
       fail = .false.
       write(iOut,1000)
 !
@@ -135,39 +142,56 @@ Include "gbs_mod.f03"
 !      write(iOut,*)' Running overlap of 1 with 4.'
 !      call MQC_Overlap_CGFT(bf1,bf4,basisIntegrals)
 
-
 !
 !     Try reading a basis set from faf.
 !
       call loadGaussianBasisSet(faf,basisSet)
-
-      write(iOut,*)
-      write(iOut,*)
-      write(iOut,*)' Using Basis Set Object...'
-      write(IOut,*)
-      write(iOut,*)' ----------------------------------------------'
-      write(iOut,*)' Running overlap of 1 with 1.'
-      call MQC_Overlap_CGFT(basisSet%shells(1),basisSet%shells(1),basisIntegrals)
-      write(IOut,*)
-      write(iOut,*)' ----------------------------------------------'
-      write(iOut,*)' Running overlap of 1 with 2.'
-      call MQC_Overlap_CGFT(basisSet%shells(1),basisSet%shells(2),basisIntegrals)
-      write(IOut,*)
-      write(iOut,*)' ----------------------------------------------'
-      write(iOut,*)' Running overlap of 2 with 1.'
-      call MQC_Overlap_CGFT(basisSet%shells(2),basisSet%shells(1),basisIntegrals)
-      write(IOut,*)
-      write(iOut,*)' ----------------------------------------------'
-      write(iOut,*)' Running overlap of 2 with 2.'
-      call MQC_Overlap_CGFT(basisSet%shells(2),basisSet%shells(2),basisIntegrals)
-      write(IOut,*)
-      write(iOut,*)' ----------------------------------------------'
-
+      call basisSet%print(iOut)
       overlapMatrix = basisSetOverlapMatrix(basisSet)
       call mqc_print(overlapMatrix,iOut,header='overlap matrix')
+      write(iOut,*)
+      write(iOut,*)
+      call MQC_Value_CGFT(basisSet%shells(2),[ 0.1,0.1,0.7 ],basisValues)
+      call mqc_print(basisValues,iOut,header='basisValues on shell 2')
+      write(iOut,*)
+      write(iOut,*)
+      basisValues = basisSetValuesList(basisSet,[ 0.1,0.1,0.7 ])
+      call mqc_print(basisValues,iOut,header='basisValues over all basis functions')
+      write(iOut,*)
+      write(iOut,*)
+
+      Allocate(quadGrid(3,nGridPoints**3),quadWeights(nGridPoints**3),  &
+        quadValues(nGridPoints**3))
+      call setup_quadrature_trapezoid3d(nGridPoints,  &
+        0.025,  &
+        [ -5.0,-5.0,-5.0 ],  &
+        quadGrid,quadWeights)
+      write(iOut,*)' max grid point: ',maxval(quadGrid)
+!      call mqc_print(quadWeights,iOut,header='quadrature weights')
+!      write(iOut,*)
+!      write(iOut,*)
+      call faf%getArray('ALPHA MO COEFFICIENTS',mqcVarOut=tmp)
+      moCoeffs = tmp
+!$omp parallel do  &
+!$omp shared(quadValues)  &
+!$omp private(i,basisValues)
+      do i = 1,size(quadWeights)
+        basisValues = basisSetValuesList(basisSet,quadGrid(:,i))
+        quadValues(i) = dot_product(moCoeffs(:,1),basisValues)
+        quadValues(i) = quadValues(i)*quadValues(i)
+      endDo
+!$omp end parallel do
+      write(iOut,*)' Integral = ',dot_product(quadWeights,quadValues)
+      write(iOut,*)
+      write(iOut,*)
+
+      goto 999
 
 !
 !     The end of the program.
 !
   999 Continue
+      call CPU_TIME(tEnd)
+      write(iOut,*)' TIME = ',tEnd-tStart
+      write(iOut,*)
       end program gbs
