@@ -14,6 +14,7 @@ Include "gbs_mod.f03"
       integer,parameter::lVal=0
       integer::i,j,k,l
       logical::fail=.false.,atEnd
+      real(kind=real64)::moVal1,moVal2,totalIntegral
       real(kind=real64),dimension(5,5)::tmpSij=float(0)
       character(len=256)::fafName
       logical,dimension(5,5)::haveSij=.false.
@@ -42,10 +43,13 @@ Include "gbs_mod.f03"
 !     Begin the program.
 !
       call CPU_TIME(tStart)
-      nOMP=24
-!$    call omp_set_num_threads(nOMP)
+      nOMP=48
+      call omp_set_num_threads(nOMP)
       fail = .false.
       write(iOut,1000)
+!$OMP PARALLEL
+PRINT *, "Thread number:", OMP_GET_THREAD_NUM()
+!$OMP END PARALLEL
 !
 !     Read the FAF name from the command line and load the object faf.
 !
@@ -172,18 +176,58 @@ Include "gbs_mod.f03"
 !      write(iOut,*)
       call faf%getArray('ALPHA MO COEFFICIENTS',mqcVarOut=tmp)
       moCoeffs = tmp
-!$omp parallel do  &
-!$omp shared(quadValues)  &
-!$omp private(i,basisValues)
-      do i = 1,size(quadWeights)
-        basisValues = basisSetValuesList(basisSet,quadGrid(:,i))
-        quadValues(i) = dot_product(moCoeffs(:,1),basisValues)
-        quadValues(i) = quadValues(i)*quadValues(i)
-      endDo
-!$omp end parallel do
-      write(iOut,*)' Integral = ',dot_product(quadWeights,quadValues)
+
+!hph+
+      totalIntegral = mqc_float(0)
+      do j = 1,5
+      !$omp parallel do default(none) &
+      !$omp shared(j, moCoeffs, quadWeights, quadGrid, basisSet, quadValues) &
+      !$omp private(i, basisValues, moVal1, moVal2)
+        do i = 1, size(quadWeights)
+          basisValues = basisSetValuesList(basisSet, quadGrid(:,i))
+          moVal1 = dot_product(moCoeffs(:,j), basisValues)
+          moVal2 = moVal1
+          quadValues(i) = moVal1*moVal1*quadGrid(3,i)
+        end do
+      !$omp end parallel do
+        totalIntegral = totalIntegral + mqc_float(2)*dot_product(quadWeights,quadValues)
+        write(iOut,*) ' MO, Integral = ', j, dot_product(quadWeights, quadValues)
+      end do
+      write(iOut,*)
+      write(iOut,*)' Hrant - Total Integral Value (au)     = ',totalIntegral
+      write(iOut,*)' Hrant - Total Integral Value (Debeye) = ',totalIntegral*2.541746
       write(iOut,*)
       write(iOut,*)
+
+!      do j = 1,5
+!        do i = 1,size(quadWeights)
+!          basisValues = basisSetValuesList(basisSet,quadGrid(:,i))
+!          moVal1 = dot_product(moCoeffs(:,j),basisValues)
+!          moVal2 = moVal1
+!          quadValues(i) = moVal1*quadGrid(3,i)*moVal2
+!        endDo
+!        write(iOut,*)' MO, Integral = ',j,dot_product(quadWeights,quadValues)
+!        write(iOut,*)
+!        write(iOut,*)
+!      endDo
+!
+!
+!      do j = 1,5
+!!$omp parallel do  &
+!!$omp shared(quadValues)  &
+!!$omp private(i,basisValues,moVal1,moVal2)
+!        do i = 1,size(quadWeights)
+!          basisValues = basisSetValuesList(basisSet,quadGrid(:,i))
+!          moVal1 = dot_product(moCoeffs(:,j),basisValues)
+!          moVal2 = moVal1
+!          quadValues(i) = moVal1*quadGrid(3,i)*moVal2
+!        endDo
+!!$omp end parallel do
+!        write(iOut,*)' MO, Integral = ',j,dot_product(quadWeights,quadValues)
+!        write(iOut,*)
+!        write(iOut,*)
+!      endDo
+!hph-
 
       goto 999
 

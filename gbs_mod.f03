@@ -3,7 +3,8 @@
 !     This module supports the GBS test program.
 !
       use iso_fortran_env
-      use MQC_Integrals1
+      use mqc_general
+      use mqc_integrals1
       use mqc_gaussian
 !
       implicit none
@@ -107,6 +108,39 @@
       end subroutine loadGaussianBasisSet
 
 !
+!PROCEDURE setup_quadrature_trapezoid1d
+      subroutine setup_quadrature_trapezoid1d(nPoints,stepSize,origin,  &
+        quadGrid,quadWeights)
+!
+!     This subroutine generates a 1D trapezoidal quadrature grid and weights
+!     over a grid with uniform spacing.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+!
+      implicit none
+      integer(kind=int64),intent(in)::nPoints
+      real(kind=real64),intent(in)::stepSize,origin
+      real(kind=real64),dimension(nPoints),intent(out)::quadGrid,  &
+        quadWeights
+      integer(kind=int64)::i,idx
+      real(kind=real64)::wx,wy,wz
+      real(kind=real64)::x
+!
+      quadGrid(1) = origin
+      quadWeights(1) = stepSize/mqc_float(2)
+      do i = 2,nPoints-1
+        quadGrid(i) = quadGrid(i-1)+stepSize
+        quadWeights(i) = stepSize
+      endDo
+      quadGrid(nPoints) = quadGrid(nPoints-1)+stepSize
+      quadWeights(nPoints) = stepSize/mqc_float(2)
+!
+      return
+      end subroutine setup_quadrature_trapezoid1d
+
+!
 !PROCEDURE setup_quadrature_trapezoid3d
       subroutine setup_quadrature_trapezoid3d(nPoints,stepSize,origin,  &
         quadGrid,quadWeights)
@@ -152,6 +186,16 @@
 !
       return
       end subroutine setup_quadrature_trapezoid3d
+
+!
+!PROCEDURE dysonTransitionDipole
+      function dysonTransitionDipoleElement(theta,photonVector,k,  &
+        dysonCoeffs,aoBasisSet,qudraturePoints,quadratureWeights)  &
+        result(vectorOut)
+
+
+
+      end function dysonTransitionDipoleElement
 
 
       end module gbs_mod

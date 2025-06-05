@@ -13,7 +13,7 @@ RunF         = pgfortran -i8 -r8 -Mallocatable=03 -mp
 # The 'all' rule.
 #
 #hph all: basisCounting.exe gbs.exe
-all: gbs.exe
+all: pad.exe
 
 #
 # Generic rules for building module (*.mod) and object (*.o) files.
