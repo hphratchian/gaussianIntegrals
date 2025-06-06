@@ -187,15 +187,17 @@
       return
       end subroutine setup_quadrature_trapezoid3d
 
+!hph+
+!!
+!!PROCEDURE dysonTransitionDipole
+!      function dysonTransitionDipoleElement(theta,photonVector,k,  &
+!        dysonCoeffs,aoBasisSet,qudraturePoints,quadratureWeights)  &
+!        result(vectorOut)
 !
-!PROCEDURE dysonTransitionDipole
-      function dysonTransitionDipoleElement(theta,photonVector,k,  &
-        dysonCoeffs,aoBasisSet,qudraturePoints,quadratureWeights)  &
-        result(vectorOut)
-
-
-
-      end function dysonTransitionDipoleElement
+!
+!
+!      end function dysonTransitionDipoleElement
+!hph-
 
 
       end module gbs_mod
