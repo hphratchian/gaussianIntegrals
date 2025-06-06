@@ -35,7 +35,7 @@
       endIf
       if(fail) goto 999
       call GET_COMMAND_ARGUMENT(1,commandLineArg)
-      read(commandLineArg,'(I)') lInput
+      read(commandLineArg,'(I1)') lInput
       if(lInput.lt.0) then
         write(iOut,9010)
         fail = .true.
