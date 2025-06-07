@@ -80,8 +80,6 @@
 !
       iCurrentPrim = 1
       do i = 1,nShells
-        write(iOut,"(1x,' Hrant - shell ',i5,' iCurrentPrim=',i5)") i,iCurrentPrim
-        write(iOut,*)'    Shell Type = ',shellTypes(i)
         if(shellTypes(i).ge.0) then
           nShellsFull = nShellsFull+1
           call MQC_basisSet_addShell(basisSet,shellTypes(i),  &
@@ -101,7 +99,6 @@
           call mqc_error('Invalid shell type in loadGaussianBasisSet.')
         endIf
         iCurrentPrim = iCurrentPrim+nPrimsPerShell(i)
-        write(iOut,*)'   nBasis = ',basisSet%nBasis
       endDo
 !
       return
@@ -187,17 +184,114 @@
       return
       end subroutine setup_quadrature_trapezoid3d
 
-!hph+
-!!
-!!PROCEDURE dysonTransitionDipole
-!      function dysonTransitionDipoleElement(theta,photonVector,k,  &
-!        dysonCoeffs,aoBasisSet,qudraturePoints,quadratureWeights)  &
-!        result(vectorOut)
+!
+!PROCEDURE dysonTransitionDipole
+      function dysonTransitionDipole(theta,kMag,  &
+        photonVector,dysonCoeffs,aoBasisSet,quadraturePoints,  &
+        quadratureWeights) result(MSquared)
+!
+!     This function computes the Dyson transition dipole squared for a given
+!     photon electric field vector, <photonVector>, the angle between that
+!     vector and the outgoing plane wave, <theta>, and the magnitude of the
+!     outgoing plane wave, <kMag>. This function assumes the outgoing plane wave
+!     travels in the xz plane.
 !
 !
+!     H. P. Hratchian, 2025.
 !
-!      end function dysonTransitionDipoleElement
-!hph-
+      implicit none
+      real(kind=real64),intent(in)::theta,kMag
+      real(kind=real64),dimension(3),intent(in)::photonVector
+      real(kind=real64),dimension(:),intent(in)::dysonCoeffs,quadratureWeights
+      real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
+      real(kind=real64)::MSquared
+      class(mqc_basisSet),intent(in)::aoBasisSet
+!
+      integer(kind=int64)::i
+      real(kind=real64)::dysonVal,dysonNorm,epsilonDotMu,MReal,  &
+        MImaginary,w
+      real(kind=real64),dimension(3)::kVector
+      real(kind=real64),dimension(:),allocatable::aoBasisValues,  &
+        MValuesReal,MValuesImaginary,dysonNormTest
+!
+!     Set up the elements of kVector. For now, we only consider the k-vector in
+!     the xz plane.
+!
+      kVector(1) = sin(theta)
+      kVector(2) = mqc_float(0)
+      kVector(3) = cos(theta)
+      kVector = kMag*kVector
+!
+!     Loop through the quadrature points to evaluate integrand values.
+!
+      Allocate(MValuesReal(SIZE(quadratureWeights)),  &
+        MValuesImaginary(SIZE(quadratureWeights)),  &
+        dysonNormTest(SIZE(quadratureWeights)))
+      do i = 1,SIZE(quadratureWeights)
+        w = kVector(1)*quadraturePoints(1,i)  &
+          + kVector(2)*quadraturePoints(2,i)  &
+          + kVector(3)*quadraturePoints(3,i)
+        epsilonDotMu = photonVector(1)*quadraturePoints(1,i)  &
+          + photonVector(2)*quadraturePoints(2,i)  &
+          + photonVector(3)*quadraturePoints(3,i)
+        aoBasisValues = basisSetValuesList(aoBasisSet,  &
+          quadraturePoints(:,i))
+        dysonVal = dot_product(dysonCoeffs,aoBasisValues)
+        dysonNormTest(i) = dysonVal*dysonVal
+        MValuesReal(i) = cos(w)*epsilonDotMu*dysonVal
+        MValuesImaginary(i) = -sin(w)*epsilonDotMu*dysonVal
+      endDo
+      dysonNorm = dot_product(quadratureWeights,dysonNormTest)
+      MReal = dot_product(quadratureWeights,MValuesReal)
+      MImaginary = dot_product(quadratureWeights,MValuesImaginary)
+      write(iOut,*)
+      write(iOut,*)
+      write(iOut,*)' Hrant - MReal      = ',MReal
+      write(iOut,*)'         MImaginary = ',MImaginary
+      MSquared = MReal**2 + MImaginary**2
+      write(iOut,'(A,f6.4,3x,f20.12,3x,f20.12)')' Hrant - theta, MSquared, dysonNorm = ',theta,MSquared,dysonNorm
+      return
+      end function dysonTransitionDipole
 
+!
+!PROCEDURE moInnerProductNumericalIntegration
+      function moInnerProductNumericalIntegration(moCoeffsBra,  &
+        quadraturePoints,quadratureWeights,aoBasisSet,moCoeffsKet)  &
+        result(integralValue)
+!
+!     This function computes the inner-product of two MOs numerically using the
+!     quadrature grid and weights sent as input dummy arguments. Argument
+!     moCoeffsKet is optional; if it is NOT sent, the bra and ket are both taken
+!     to be moCoeffsBra.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      real(kind=real64),dimension(:),intent(in)::moCoeffsBra,quadratureWeights
+      real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
+      class(mqc_basisSet),intent(in)::aoBasisSet
+      real(kind=real64),dimension(:),intent(in),optional::moCoeffsKet
+      real(kind=real64)::integralValue
+!
+      integer(kind=int64)::i
+      real(kind=real64),dimension(:),allocatable::aoBasisValues,valuesGrid
+!
+!     Loop through the quadrature points to evaluate integrand values.
+!
+      Allocate(valuesGrid(SIZE(quadratureWeights)))
+      do i = 1,SIZE(quadratureWeights)
+        aoBasisValues = basisSetValuesList(aoBasisSet,  &
+          quadraturePoints(:,i))
+        valuesGrid(i) = dot_product(moCoeffsBra,aoBasisValues)
+        if(PRESENT(moCoeffsKet)) then
+          valuesGrid(i) = valuesGrid(i)*dot_product(moCoeffsKet,aoBasisValues)
+        else
+          valuesGrid(i) = valuesGrid(i)*valuesGrid(i)
+        endIf
+      endDo
+      integralValue = dot_product(quadratureWeights,valuesGrid)
+      return
+      end function moInnerProductNumericalIntegration
 
       end module gbs_mod

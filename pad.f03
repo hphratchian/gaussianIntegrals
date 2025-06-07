@@ -1,7 +1,18 @@
 Include "gbs_mod.f03"
       program pad
 !
-!     This program evaluates the photoelectron angular distribution.
+!     This test program evaluates the photoelectron angular distribution,
+!     intensities as a function of theta, for a given MO extracted from a FAF.
+!     There is one command line argument, a FAF from a Gaussian job. The program
+!     has a parameter iMODyson declared below. That number corresponds to the
+!     (alpha) MO that is used in the program as the Dyson orbital.
+!
+!     CODE STATUS: At this time, it seems that the program works numerically.
+!     However, some tests result in very large PAD intensities. I'm not sure if
+!     these are correct or if there's an error or bug in the code somewhere. I
+!     still need to run that to ground. Additionally, the code's output is not
+!     printed in a convenient way yet. Furthermore, there's a lot of room for
+!     exploring quadrature choices and also parallel coding.
 !
 !
 !     Hrant P. Hratchian, 2025.
@@ -12,10 +23,10 @@ Include "gbs_mod.f03"
       USE OMP_LIB
       USE gbs_mod
       implicit none
-      integer(kind=int64),parameter::nOMP=1
+      integer(kind=int64),parameter::nOMP=1,iMODyson=4
       integer(kind=int64)::i,j,nGridPointsM,nGridPointsTheta
       real(kind=real64)::tStart,tEnd,stepSizeIntM,stepSizeTheta,  &
-        thetaStart,moVal1,moVal2,totalIntegral
+        thetaStart,moVal1,moVal2,kMag,MSquared
       real(kind=real64),dimension(3)::cartStart,cartEnd,laserVector
       real(kind=real64),dimension(:),allocatable::quadGridTheta,  &
         quadWeightsTheta,quadWeightsM,basisValues
@@ -89,6 +100,26 @@ PRINT *, "Thread number:", OMP_GET_THREAD_NUM()
       call setup_quadrature_trapezoid3d(nGridPointsM,stepSizeIntM,  &
         cartStart,quadGridM,quadWeightsM)
       write(iOut,*)' max grid point: ',maxval(quadGridM)
+!
+!     Test that the chosen MO is normalized using quadrature.
+!
+      write(iOut,*)
+      write(iOut,*)' Test of <dyson|dyson> = ',  &
+        moInnerProductNumericalIntegration(moCoeffs(:,iMODyson),  &
+        quadGridM,quadWeightsM,basisSet)
+      write(iOut,*)
+!
+!     Try out the Dyson Transition Dipole magnitude function. For now, we
+!     calculate the value at 0, 90, and 180 degrees.
+!
+      kMag = mqc_float(1)/mqc_float(100)
+      laserVector = [ 0.0,0.0,1.0 ]
+      MSquared = dysonTransitionDipole(mqc_float(0),kMag,  &
+        laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+      MSquared = dysonTransitionDipole(Pi/mqc_float(2),kMag,  &
+        laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+      MSquared = dysonTransitionDipole(Pi,kMag,  &
+        laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
 !
 !     The end of the program.
 !
