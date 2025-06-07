@@ -185,8 +185,8 @@
       end subroutine setup_quadrature_trapezoid3d
 
 !
-!PROCEDURE dysonTransitionDipole
-      function dysonTransitionDipole(theta,kMag,  &
+!PROCEDURE dysonPlaneWaveMatrixElementSquared
+      function dysonPlaneWaveMatrixElementSquared(theta,kMag,  &
         photonVector,dysonCoeffs,aoBasisSet,quadraturePoints,  &
         quadratureWeights) result(MSquared)
 !
@@ -209,7 +209,7 @@
 !
       integer(kind=int64)::i
       real(kind=real64)::dysonVal,dysonNorm,epsilonDotMu,MReal,  &
-        MImaginary,w
+        MImaginary,w,tStart,tEnd
       real(kind=real64),dimension(3)::kVector
       real(kind=real64),dimension(:),allocatable::aoBasisValues,  &
         MValuesReal,MValuesImaginary,dysonNormTest
@@ -227,6 +227,10 @@
       Allocate(MValuesReal(SIZE(quadratureWeights)),  &
         MValuesImaginary(SIZE(quadratureWeights)),  &
         dysonNormTest(SIZE(quadratureWeights)))
+      call CPU_TIME(tStart)
+!$omp parallel do private(i, aoBasisValues, w, epsilonDotMu, dysonVal)  &
+!$omp&  shared(MValuesReal, MValuesImaginary, dysonNormTest)  &
+!$omp&  schedule(dynamic)
       do i = 1,SIZE(quadratureWeights)
         w = kVector(1)*quadraturePoints(1,i)  &
           + kVector(2)*quadraturePoints(2,i)  &
@@ -234,14 +238,20 @@
         epsilonDotMu = photonVector(1)*quadraturePoints(1,i)  &
           + photonVector(2)*quadraturePoints(2,i)  &
           + photonVector(3)*quadraturePoints(3,i)
-        aoBasisValues = basisSetValuesList(aoBasisSet,  &
-          quadraturePoints(:,i))
+        call basisSetValuesList1(aoBasisSet,  &
+          quadraturePoints(:,i),aoBasisValues)
         dysonVal = dot_product(dysonCoeffs,aoBasisValues)
         dysonNormTest(i) = dysonVal*dysonVal
         MValuesReal(i) = cos(w)*epsilonDotMu*dysonVal
         MValuesImaginary(i) = -sin(w)*epsilonDotMu*dysonVal
       endDo
+!$omp end parallel do
+      call CPU_TIME(tEnd)
+      write(iOut,'(" time in loop: ",f8.2,"s")') tEnd-tStart
+      call CPU_TIME(tStart)
       dysonNorm = dot_product(quadratureWeights,dysonNormTest)
+      call CPU_TIME(tEnd)
+      write(iOut,'(" time for 1 dotprod: ",f8.2,"s")') tEnd-tStart
       MReal = dot_product(quadratureWeights,MValuesReal)
       MImaginary = dot_product(quadratureWeights,MValuesImaginary)
       write(iOut,*)
@@ -251,7 +261,171 @@
       MSquared = MReal**2 + MImaginary**2
       write(iOut,'(A,f6.4,3x,f20.12,3x,f20.12)')' Hrant - theta, MSquared, dysonNorm = ',theta,MSquared,dysonNorm
       return
-      end function dysonTransitionDipole
+      end function dysonPlaneWaveMatrixElementSquared
+
+!
+!PROCEDURE dysonPlaneWaveMatrixElementSquaredThetaList
+      function dysonPlaneWaveMatrixElementSquaredThetaList(thetaList,kMag,  &
+        photonVector,dysonCoeffs,aoBasisSet,quadraturePoints,  &
+        quadratureWeights) result(MSquared)
+!
+!     This function computes the Dyson transition dipole squared for a given
+!     photon electric field vector, <photonVector>, the angle between that
+!     vector and the outgoing plane wave, <theta>, and the magnitude of the
+!     outgoing plane wave, <kMag>. This function assumes the outgoing plane wave
+!     travels in the xz plane.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      real(kind=real64),intent(in)::kMag
+      real(kind=real64),dimension(3),intent(in)::photonVector
+      real(kind=real64),dimension(:),intent(in)::thetaList,dysonCoeffs,quadratureWeights
+      real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
+      real(kind=real64),dimension(:),allocatable::MSquared
+      real(kind=real64),dimension(:),allocatable::MValuesRealScratch,MValuesImaginaryScratch
+      real(kind=real64),dimension(:),allocatable::MValuesRealScratch1,MValuesImaginaryScratch1
+      class(mqc_basisSet),intent(in)::aoBasisSet
+!
+      integer(kind=int64)::i,j,nTheta
+      real(kind=real64)::dysonVal,dysonNorm,epsilonDotMu,MReal,  &
+        MImaginary,w,tStart,tEnd
+      real(kind=real64),dimension(:),allocatable::aoBasisValues,  &
+        dysonNormTest
+      real(kind=real64),dimension(:,:),allocatable::kVectors,MValuesReal,  &
+        MValuesImaginary
+!
+!     Allocate memory.
+!
+      nTheta = SIZE(thetaList)
+      Allocate(MSquared(nTheta))
+      Allocate(MValuesReal(SIZE(thetaList),SIZE(quadratureWeights)),  &
+        MValuesImaginary(SIZE(thetaList),SIZE(quadratureWeights)),  &
+        dysonNormTest(SIZE(quadratureWeights)))
+      Allocate(MValuesRealScratch(nTheta),MValuesImaginaryScratch(nTheta))
+      Allocate(MValuesRealScratch1(nTheta),MValuesImaginaryScratch1(nTheta))
+!
+!     Build the array of kVectors.
+!
+      do j = 1,nTheta
+        kVectors(1,j) = sin(thetaList(j))
+        kVectors(2,j) = mqc_float(0)
+        kVectors(3,j) = cos(thetaList(j))
+      endDo
+!
+!     Loop through the quadrature points to evaluate integrand values.
+!
+      call CPU_TIME(tStart)
+!$omp parallel do private(i, j, aoBasisValues, w, epsilonDotMu, dysonVal, MValuesRealScratch, MValuesImaginaryScratch) &
+!$omp& shared(MValuesReal, MValuesImaginary, dysonNormTest, thetaList, quadraturePoints, dysonCoeffs, photonVector, kVectors) &
+!$omp& schedule(dynamic)
+      do i = 1,SIZE(quadratureWeights)
+        call basisSetValuesList1(aoBasisSet,  &
+          quadraturePoints(:,i),aoBasisValues)
+        dysonVal = dot_product(dysonCoeffs,aoBasisValues)
+        dysonNormTest(i) = dysonVal*dysonVal
+        epsilonDotMu = photonVector(1)*quadraturePoints(1,i)  &
+          + photonVector(2)*quadraturePoints(2,i)  &
+          + photonVector(3)*quadraturePoints(3,i)
+        do j = 1,nTheta
+          w = kMag*(kVectors(1,j)*quadraturePoints(1,i)  &
+            + kVectors(2,j)*quadraturePoints(2,i)  &
+            + kVectors(3,j)*quadraturePoints(3,i))
+          MValuesRealScratch(j) = cos(w)*epsilonDotMu*dysonVal
+          MValuesImaginaryScratch(j) = -sin(w)*epsilonDotMu*dysonVal
+        endDo
+        MValuesReal(:,i) = MValuesRealScratch
+        MValuesImaginary(:,i) = MValuesImaginaryScratch
+      endDo
+!$omp end parallel do
+      call CPU_TIME(tEnd)
+      write(iOut,'(" time in loop: ",f8.2,"s")') tEnd-tStart
+      call CPU_TIME(tStart)
+      dysonNorm = dot_product(quadratureWeights,dysonNormTest)
+      call CPU_TIME(tEnd)
+      write(iOut,'(" time for 1 dotprod: ",f8.2,"s")') tEnd-tStart
+      MValuesRealScratch1 = MatMul(MValuesReal,quadratureWeights)
+      call mqc_print(MValuesRealScratch1,iOut,header='MValuesRealScratch 2')
+      MValuesImaginaryScratch1 = MatMul(MValuesImaginary,quadratureWeights)
+      call mqc_print(MValuesImaginaryScratch1,iOut,header='MValuesImaginaryScratch 2')
+      call mqc_print(MValuesRealScratch1*MValuesRealScratch1+MValuesImaginaryScratch1*MValuesImaginaryScratch1,iOut,header='MSquared 2')
+      MSquared = MValuesRealScratch1*MValuesRealScratch1+MValuesImaginaryScratch1*MValuesImaginaryScratch1
+!
+      return
+      end function dysonPlaneWaveMatrixElementSquaredThetaList
+
+!
+!PROCEDURE dysonPlaneWaveMatrixElementSquaredThetaList1
+      function dysonPlaneWaveMatrixElementSquaredThetaList1(thetaList,  &
+        kMag,photonVector,dysonCoeffs,aoBasisSet,quadraturePoints,&
+        quadratureWeights) result(MSquared)
+!
+!     This function computes the Dyson transition dipole squared for a given
+!     photon electric field vector, <photonVector>, the angle between that
+!     vector and the outgoing plane wave, <theta>, and the magnitude of the
+!     outgoing plane wave, <kMag>. This function assumes the outgoing plane wave
+!     travels in the xz plane.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      real(kind=real64), intent(in) :: kMag
+      real(kind=real64), dimension(3), intent(in) :: photonVector
+      real(kind=real64), dimension(:), intent(in) :: thetaList, dysonCoeffs, quadratureWeights
+      real(kind=real64), dimension(:,:), intent(in) :: quadraturePoints
+      class(mqc_basisSet), intent(in) :: aoBasisSet
+      real(kind=real64), dimension(:), allocatable :: MSquared
+!
+      integer(kind=int64) :: i, j, nTheta, nGrid
+      real(kind=real64) :: w, dysonVal, epsilonDotMu, tStart, tEnd
+      real(kind=real64), dimension(:), allocatable :: aoBasisValues, dysonNormTest
+      real(kind=real64), dimension(:), allocatable :: MReal, MImag
+      real(kind=real64), dimension(3) :: gridPoint, kVec
+!
+!     Allocate memory and initialize variables.
+!
+      nTheta = SIZE(thetaList)
+      nGrid = SIZE(quadratureWeights)
+      allocate(MSquared(nTheta))
+      allocate(MReal(nTheta), MImag(nTheta))
+      allocate(dysonNormTest(nGrid))
+      MSquared = mqc_float(0)
+      MReal = mqc_float(0)
+      MImag = mqc_float(0)
+!
+!     Loop through the quadrature points to evaluate integrand values.
+!
+      call CPU_TIME(tStart)
+!$omp parallel default(shared) private(i,j,w,dysonVal,epsilonDotMu,aoBasisValues,gridPoint,kVec) &
+!$omp& reduction(+:MReal, MImag, dysonNormTest)
+      allocate(aoBasisValues(SIZE(dysonCoeffs)))
+!$omp do schedule(dynamic)
+      do i = 1, nGrid
+        gridPoint = quadraturePoints(:,i)
+        call basisSetValuesList1(aoBasisSet, gridPoint, aoBasisValues)
+        dysonVal = dot_product(dysonCoeffs, aoBasisValues)
+        dysonNormTest(i) = dysonVal * dysonVal
+        epsilonDotMu = dot_product(photonVector, gridPoint)
+        do j = 1, nTheta
+          kVec(1) = sin(thetaList(j))
+          kVec(2) = 0.0_real64
+          kVec(3) = cos(thetaList(j))
+          w = kMag * dot_product(kVec, gridPoint)
+          MReal(j) = MReal(j) + cos(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
+          MImag(j) = MImag(j) - sin(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
+        end do
+      end do
+!$omp end do
+      deallocate(aoBasisValues)
+!$omp end parallel
+      call CPU_TIME(tEnd)
+      write(iOut, '(" time in loop: ",f8.2,"s")') tEnd - tStart
+      MSquared = MReal**2 + MImag**2
+!
+      return
+      end function dysonPlaneWaveMatrixElementSquaredThetaList1
 
 !
 !PROCEDURE moInnerProductNumericalIntegration
@@ -272,7 +446,7 @@
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
       class(mqc_basisSet),intent(in)::aoBasisSet
       real(kind=real64),dimension(:),intent(in),optional::moCoeffsKet
-      real(kind=real64)::integralValue
+      real(kind=real64)::integralValue,localValue,minValue,tStart,tEnd
 !
       integer(kind=int64)::i
       real(kind=real64),dimension(:),allocatable::aoBasisValues,valuesGrid
@@ -280,17 +454,30 @@
 !     Loop through the quadrature points to evaluate integrand values.
 !
       Allocate(valuesGrid(SIZE(quadratureWeights)))
+      call CPU_TIME(tStart)
+!$omp parallel do private(i, aoBasisValues, localValue) shared(valuesGrid) schedule(dynamic)
       do i = 1,SIZE(quadratureWeights)
-        aoBasisValues = basisSetValuesList(aoBasisSet,  &
-          quadraturePoints(:,i))
-        valuesGrid(i) = dot_product(moCoeffsBra,aoBasisValues)
+!        aoBasisValues = basisSetValuesList(aoBasisSet,  &
+!          quadraturePoints(:,i))
+        call basisSetValuesList1(aoBasisSet,  &
+          quadraturePoints(:,i),aoBasisValues)
+        localValue = dot_product(moCoeffsBra,aoBasisValues)
         if(PRESENT(moCoeffsKet)) then
-          valuesGrid(i) = valuesGrid(i)*dot_product(moCoeffsKet,aoBasisValues)
+          localValue = localValue*dot_product(moCoeffsKet,aoBasisValues)
         else
-          valuesGrid(i) = valuesGrid(i)*valuesGrid(i)
+          localValue = localValue*localValue
         endIf
+        valuesGrid(i) = localValue
       endDo
+!$omp end parallel do
+      call CPU_TIME(tEnd)
+      write(iOut,'(" time in loop: ",f8.2,"s")') tEnd-tStart
+      minValue = MinVal(valuesGrid)
+      write(iOut,'(" in moInnerProductNumericalIntegration, minimum value on the grid = ",f20.15)'),minValue
+      call CPU_TIME(tStart)
       integralValue = dot_product(quadratureWeights,valuesGrid)
+      call CPU_TIME(tEnd)
+      write(iOut,'(" time for 1 dotprod: ",f8.2,"s")') tEnd-tStart
       return
       end function moInnerProductNumericalIntegration
 

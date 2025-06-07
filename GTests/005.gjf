@@ -1,0 +1,11 @@
+#p test gfinput 6-31g* units=au geom=modela
+iop(3/33=2)
+pop=full output=faf
+
+test
+
+0  1
+o h h
+
+005.faf
+

@@ -3,9 +3,10 @@ Include "gbs_mod.f03"
 !
 !     This test program evaluates the photoelectron angular distribution,
 !     intensities as a function of theta, for a given MO extracted from a FAF.
-!     There is one command line argument, a FAF from a Gaussian job. The program
-!     has a parameter iMODyson declared below. That number corresponds to the
-!     (alpha) MO that is used in the program as the Dyson orbital.
+!     There are up to 2 command line arguments. The first command line argument
+!     is a FAF from a Gaussian job, which is required. The second command line
+!     arguement is the (alpha) MO number to use as the Dyson orbtial, which is
+!     optional and defaults to MO 1.
 !
 !     CODE STATUS: At this time, it seems that the program works numerically.
 !     However, some tests result in very large PAD intensities. I'm not sure if
@@ -23,13 +24,13 @@ Include "gbs_mod.f03"
       USE OMP_LIB
       USE gbs_mod
       implicit none
-      integer(kind=int64),parameter::nOMP=1,iMODyson=4
-      integer(kind=int64)::i,j,nGridPointsM,nGridPointsTheta
-      real(kind=real64)::tStart,tEnd,stepSizeIntM,stepSizeTheta,  &
-        thetaStart,moVal1,moVal2,kMag,MSquared
+      integer(kind=int64),parameter::nOMP=48
+      integer(kind=int64)::i,j,iMODyson,nGridPointsM,nGridPointsTheta
+      real(kind=real64)::tStart,tEnd,tstart1,tEnd1,stepSizeIntM,  &
+        stepSizeTheta,thetaStart,moVal1,moVal2,kMag,MSquared
       real(kind=real64),dimension(3)::cartStart,cartEnd,laserVector
       real(kind=real64),dimension(:),allocatable::quadGridTheta,  &
-        quadWeightsTheta,quadWeightsM,basisValues
+        quadWeightsTheta,quadWeightsM,basisValues,MSquaredList
       real(kind=real64),dimension(:,:),allocatable::quadGridM,moCoeffs
       logical::fail=.false.
       character(len=256)::fafName
@@ -43,7 +44,7 @@ Include "gbs_mod.f03"
 !
 !     Format statements.
 !
- 1000 format(1x,'Program gbs.')
+ 1000 format(1x,'Program PAD.')
 !
 !
 !     Begin the program.
@@ -52,13 +53,26 @@ Include "gbs_mod.f03"
       call omp_set_num_threads(nOMP)
       fail = .false.
       write(iOut,1000)
-!$OMP PARALLEL
-PRINT *, "Thread number:", OMP_GET_THREAD_NUM()
-!$OMP END PARALLEL
+!hph+
+!!$OMP PARALLEL
+!PRINT *, "Thread number:", OMP_GET_THREAD_NUM()
+!!$OMP END PARALLEL
+!hph-
 !
-!     Read the FAF name from the command line and load the object faf.
+!     Read the FAF name and MO number (the one we use for the Dyson orbtial)
+!     from the command line. If the MO number isn't included, we set it to zero
+!     here and later default it to the HOMO.
 !
+      if(command_argument_count().lt.1.or.  &
+        command_argument_count().gt.2)  &
+        call mqc_error('PAD expects 1 or 2 command line arguments.')
       call get_command_argument(1,fafName)
+      iMODyson = 1
+      if(command_argument_count().ge.2)  &
+        call mqc_get_command_argument_integer(2,iMODyson)
+!
+!     Load the FAF and set the MO number if it wasn't provided on the command
+!     line.
       call faf%load(fafName)
 !
 !     Set the laser polarization vector.
@@ -89,36 +103,56 @@ PRINT *, "Thread number:", OMP_GET_THREAD_NUM()
 !     Prepare the integration grid and quadrature weights for the M evaluations.
 !     There is one M per theta.
 !
-      cartStart = [ -5.0,-5.0,-5.0 ]
-      cartEnd = [ 5.0,5.0,5.0 ]
-      nGridPointsM = 201
+      cartStart = [ -6.0,-6.0,-6.0 ]
+      cartEnd = [ 6.0,6.0,6.0 ]
+      nGridPointsM = 251
       stepSizeIntM = (cartEnd(1)-cartStart(1))/mqc_float(nGridPointsM-1)
       write(iOut,*)' nGridPointsM = ',nGridPointsM
+      write(iOut,*)' Total N Grid Points = ',nGridPointsM**3
       write(iOut,*)' stepSizeIntM = ',stepSizeIntM
       Allocate(quadGridM(3,nGridPointsM**3),quadWeightsM(nGridPointsM**3),  &
         quadValues(nGridPointsM**3))
+      call CPU_TIME(tStart1)
       call setup_quadrature_trapezoid3d(nGridPointsM,stepSizeIntM,  &
         cartStart,quadGridM,quadWeightsM)
+      call CPU_TIME(tEnd1)
+      write(iOut,*)' Time for 3D grid setup = ',tEnd1-tStart1
       write(iOut,*)' max grid point: ',maxval(quadGridM)
 !
 !     Test that the chosen MO is normalized using quadrature.
 !
+      call CPU_TIME(tStart1)
       write(iOut,*)
       write(iOut,*)' Test of <dyson|dyson> = ',  &
         moInnerProductNumericalIntegration(moCoeffs(:,iMODyson),  &
         quadGridM,quadWeightsM,basisSet)
       write(iOut,*)
+      call CPU_TIME(tEnd1)
+      write(iOut,*)' Time for norm test = ',tEnd1-tStart1
 !
 !     Try out the Dyson Transition Dipole magnitude function. For now, we
 !     calculate the value at 0, 90, and 180 degrees.
 !
       kMag = mqc_float(1)/mqc_float(100)
       laserVector = [ 0.0,0.0,1.0 ]
-      MSquared = dysonTransitionDipole(mqc_float(0),kMag,  &
+      call CPU_TIME(tStart1)
+      MSquared = dysonPlaneWaveMatrixElementSquared(mqc_float(0),kMag,  &
         laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
-      MSquared = dysonTransitionDipole(Pi/mqc_float(2),kMag,  &
+      call CPU_TIME(tEnd1)
+      write(iOut,*)' Time for 1st dyson intensity = ',tEnd1-tStart1
+      call CPU_TIME(tStart1)
+      MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList1(  &
+        [ mqc_float(0),Pi/mqc_float(4),Pi/mqc_float(2),mqc_float(3)*Pi/mqc_float(4),Pi  ],kMag,  &
         laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
-      MSquared = dysonTransitionDipole(Pi,kMag,  &
+      call CPU_TIME(tEnd1)
+      write(iOut,*)' Time for 2nd dyson intensity = ',tEnd1-tStart1
+      call mqc_print(MSquaredList,iOut,header='MSqaredList')
+
+      goto 999
+
+      MSquared = dysonPlaneWaveMatrixElementSquared(Pi/mqc_float(2),kMag,  &
+        laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+      MSquared = dysonPlaneWaveMatrixElementSquared(Pi,kMag,  &
         laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
 !
 !     The end of the program.

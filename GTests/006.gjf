@@ -1,0 +1,12 @@
+%chk=006
+#p test gfinput 6-31g(d) pop=full nosymm
+iop(3/33=2)
+output=faf
+
+test
+
+0  1
+ne
+
+006.faf
+

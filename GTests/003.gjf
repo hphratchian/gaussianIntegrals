@@ -1,0 +1,12 @@
+#p test gfinput sto-3g units=au
+iop(3/33=2)
+output=faf
+
+test
+
+0  1
+h
+h  1  1.4
+
+003.faf
+

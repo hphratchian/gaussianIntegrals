@@ -317,10 +317,7 @@
       real(kind=real64),dimension(3),intent(in)::xyz
       real(kind=real64),dimension(:),allocatable::valuesList,  &
         valuesListPartial
-
-      real(kind=real64),dimension(:,:),allocatable::integralBlock,  &
-        overlapMatrix
-      integer(kind=int64)::i,j,iStart,iEnd
+      integer(kind=int64)::i,iStart,iEnd
 !
 !     Loop over shells in the basis set object and fill the values list in
 !     blocks.
@@ -336,6 +333,39 @@
 !
       return
       end function basisSetValuesList
+
+!
+!PROCEDURE basisSetValuesList1
+      subroutine basisSetValuesList1(myBasisSet,xyz,valuesList)
+!
+!     This routine computes the values of each basis function at a position
+!     xyz. This is the same as Function basisSetValuesList, except that
+!     valuesList comes here allocated and it avoids memory allocation costs.
+!
+!     H. P. Hratchian, 2025.
+!
+!
+      implicit none
+      class(MQC_basisSet),intent(in)::myBasisSet
+      real(kind=real64),dimension(3),intent(in)::xyz
+      real(kind=real64),dimension(:),allocatable::valuesList,  &
+        valuesListPartial
+      integer(kind=int64)::i,iStart,iEnd
+!
+!     Loop over shells in the basis set object and fill the values list in
+!     blocks.
+!
+      if(.not.Allocated(valuesList)) Allocate(valuesList(myBasisSet%nBasis))
+      iStart = 1
+      do i = 1,myBasisSet%nShells
+        call MQC_Value_CGFT(myBasisSet%shells(i),xyz,valuesListPartial)
+        iEnd = iStart+Size(valuesListPartial)-1
+        valuesList(iStart:iEnd) = valuesListPartial
+        iStart = iEnd + 1
+      endDo
+!
+      return
+      end subroutine basisSetValuesList1
 
 !
 !PROCEDURE basisSetOverlapMatrix
