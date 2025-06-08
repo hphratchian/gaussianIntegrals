@@ -45,6 +45,7 @@ Include "gbs_mod.f03"
 !     Format statements.
 !
  1000 format(1x,'Program PAD.')
+ 1100 format(1x,'laser field: (',f6.2,',',f6.2,',',f6.2,')')
  2000 format(1x,'Data for the ',A,' grid:',/,  &
         3x,'nPoints = ',i15,' step size = ',f20.5)
  3000 format(/,1x,55('-'),/,  &
@@ -82,12 +83,18 @@ Include "gbs_mod.f03"
 !     here and later default it to the HOMO.
 !
       if(command_argument_count().lt.1.or.  &
-        command_argument_count().gt.2)  &
-        call mqc_error('PAD expects 1 or 2 command line arguments.')
+        command_argument_count().gt.4)  &
+        call mqc_error('PAD expects 1-4 command line arguments.')
       call get_command_argument(1,fafName)
       iMODyson = 1
       if(command_argument_count().ge.2)  &
         call mqc_get_command_argument_integer(2,iMODyson)
+      nGridPointsM = 501
+      if(command_argument_count().ge.3)  &
+        call mqc_get_command_argument_integer(3,nGridPointsM)
+      nGridPointsTheta = 30
+      if(command_argument_count().ge.4)  &
+        call mqc_get_command_argument_integer(4,nGridPointsTheta)
 !
 !     Load the FAF and set the MO number if it wasn't provided on the command
 !     line.
@@ -96,6 +103,8 @@ Include "gbs_mod.f03"
 !     Set the laser polarization vector.
 !
       laserVector = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
+!      laserVector = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
+      write(iOut,1100) laserVector
 !
 !     Read the basis set and MO coefficients from faf.
 !
@@ -107,7 +116,6 @@ Include "gbs_mod.f03"
 !
       if(MEMChecks) call print_memory_usage(iOut,'Before building grids.')
       thetaStart = mqc_float(0)
-      nGridPointsTheta = 5
       stepSizeTheta = Pi/mqc_float(nGridPointsTheta-1)
       Allocate(quadGridTheta(nGridPointsTheta),  &
         quadWeightsTheta(nGridPointsTheta))
@@ -120,7 +128,6 @@ Include "gbs_mod.f03"
 !
       cartStart = [ -6.0,-6.0,-6.0 ]
       cartEnd = [ 6.0,6.0,6.0 ]
-      nGridPointsM = 501
       stepSizeIntM = (cartEnd(1)-cartStart(1))/mqc_float(nGridPointsM-1)
       Allocate(quadGridM(3,nGridPointsM**3),quadWeightsM(nGridPointsM**3),  &
         quadValues(nGridPointsM**3))
@@ -150,7 +157,7 @@ Include "gbs_mod.f03"
 !     Try out the Dyson Transition Dipole magnitude function. For now, we
 !     calculate the value at 0, 90, and 180 degrees.
 !
-      kMag = mqc_float(1)/mqc_float(100)
+      kMag = mqc_float(1)/mqc_float(500)
       laserVector = [ 0.0,0.0,1.0 ]
       call CPU_TIME(tStart1)
       MSquared0 = dysonPlaneWaveMatrixElementSquared(mqc_float(0),kMag,  &
@@ -183,6 +190,10 @@ Include "gbs_mod.f03"
         write(iOut,3010) quadGridTheta(i),MSquaredList(i)
       endDo
       write(iOut,3020)
+      write(iOut,*)' Integrated I = ',dot_product(quadGridTheta,quadWeightsTheta)
+      write(iOut,*)
+!hph      call mqc_print(quadWeightsTheta,iOut,header='theta grid weights',blank_at_top=.true.,blank_at_bottom=.true.)
+
 !
 !     Evaluate the anisotropy parameter, beta, using the computed intensities at
 !     0 and 90 degrees.
