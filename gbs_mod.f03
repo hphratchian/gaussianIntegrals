@@ -11,7 +11,7 @@ include "memory_utils.f03"
 !
       implicit none
       integer(kind=int64),parameter::iOut=6
-      logical::MEMChecks=.false.
+      logical::MEMChecks=.true.
 !
 !
       CONTAINS

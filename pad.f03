@@ -27,7 +27,7 @@ Include "gbs_mod.f03"
       integer(kind=int64),parameter::nOMP=48
       integer(kind=int64)::i,j,iMODyson,nGridPointsM,nGridPointsTheta
       real(kind=real64)::tStart,tEnd,tstart1,tEnd1,stepSizeIntM,  &
-        stepSizeTheta,thetaStart,moVal1,moVal2,kMag,MSquared
+        stepSizeTheta,thetaStart,moVal1,moVal2,kMag,MSquared0,MSquared90
       real(kind=real64),dimension(3)::cartStart,cartEnd,laserVector
       real(kind=real64),dimension(:),allocatable::quadGridTheta,  &
         quadWeightsTheta,quadWeightsM,basisValues,MSquaredList
@@ -54,6 +54,8 @@ Include "gbs_mod.f03"
         1x,55('='))
  3010 format(9x,f7.3,3x,f25.8)
  3020 format(1x,55('='),/)
+ 3100 format(/,1x,'I(0) = ',f25.8,3x,'I(90) = ',f25.8,/,  &
+        1x,'beta = ',f25.8,/)
  8999 format(1x,'Job Time: ',f15.1,' s')
 !
 !
@@ -118,7 +120,7 @@ Include "gbs_mod.f03"
 !
       cartStart = [ -6.0,-6.0,-6.0 ]
       cartEnd = [ 6.0,6.0,6.0 ]
-      nGridPointsM = 101
+      nGridPointsM = 501
       stepSizeIntM = (cartEnd(1)-cartStart(1))/mqc_float(nGridPointsM-1)
       Allocate(quadGridM(3,nGridPointsM**3),quadWeightsM(nGridPointsM**3),  &
         quadValues(nGridPointsM**3))
@@ -135,6 +137,7 @@ Include "gbs_mod.f03"
 !
 !     Test that the chosen MO is normalized using quadrature.
 !
+      call mqc_print(moCoeffs(:,iMODyson),iOut,header='Dyson coefficients')
       call CPU_TIME(tStart1)
       write(iOut,*)
       write(iOut,*)' Test of <dyson|dyson> = ',  &
@@ -150,21 +153,28 @@ Include "gbs_mod.f03"
       kMag = mqc_float(1)/mqc_float(100)
       laserVector = [ 0.0,0.0,1.0 ]
       call CPU_TIME(tStart1)
-      MSquared = dysonPlaneWaveMatrixElementSquared(mqc_float(0),kMag,  &
+      MSquared0 = dysonPlaneWaveMatrixElementSquared(mqc_float(0),kMag,  &
         laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
       call CPU_TIME(tEnd1)
-      write(iOut,*)' Time for 1st dyson intensity = ',tEnd1-tStart1
+      write(iOut,*)' Time for MSquared0  = ',tEnd1-tStart1
       call CPU_TIME(tStart1)
+      MSquared90 = dysonPlaneWaveMatrixElementSquared(Pi/mqc_float(2),  &
+        kMag,laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,  &
+        quadWeightsM)
+      call CPU_TIME(tEnd1)
+      write(iOut,*)' Time for MSquared90 = ',tEnd1-tStart1
 !hph+
 !      MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
 !        [ mqc_float(0),Pi/mqc_float(4),Pi/mqc_float(2),mqc_float(3)*Pi/mqc_float(4),Pi  ],kMag,  &
 !        laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+      call CPU_TIME(tStart1)
       MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
         quadGridTheta,kMag,  &
         laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
 !hph-
       call CPU_TIME(tEnd1)
-      write(iOut,*)' Time for 2nd dyson intensity = ',tEnd1-tStart1
+      write(iOut,*)' Time for MSquared(theta) list = ',tEnd1-tStart1
+      write(iOUt,*)
 !
 !     Print the intensity data table.
 !
@@ -173,6 +183,12 @@ Include "gbs_mod.f03"
         write(iOut,3010) quadGridTheta(i),MSquaredList(i)
       endDo
       write(iOut,3020)
+!
+!     Evaluate the anisotropy parameter, beta, using the computed intensities at
+!     0 and 90 degrees.
+!
+      write(iOut,3100) MSquared0,MSquared90,  &
+        (MSquared0-MSquared90)/((MSquared0/mqc_float(2))+MSquared90)
 !
 !     The end of the program.
 !
