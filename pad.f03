@@ -45,6 +45,16 @@ Include "gbs_mod.f03"
 !     Format statements.
 !
  1000 format(1x,'Program PAD.')
+ 2000 format(1x,'Data for the ',A,' grid:',/,  &
+        3x,'nPoints = ',i15,' step size = ',f20.5)
+ 3000 format(/,1x,55('-'),/,  &
+        12x,'Intensity as a Function of Theta',/,  &
+        18x,'(kMag = ',f8.3,' eV)',/,  &
+        9x,'theta (rad)',15x,'I(theta)',/,  &
+        1x,55('='))
+ 3010 format(9x,f7.3,3x,f25.8)
+ 3020 format(1x,55('='),/)
+ 8999 format(1x,'Job Time: ',f15.1,' s')
 !
 !
 !     Begin the program.
@@ -63,7 +73,7 @@ Include "gbs_mod.f03"
 !
 !     Memory check...
 !
-      call print_memory_usage(iOut,'At top of PAD.')
+      if(MEMChecks) call print_memory_usage(iOut,'At top of PAD.')
 !
 !     Read the FAF name and MO number (the one we use for the Dyson orbtial)
 !     from the command line. If the MO number isn't included, we set it to zero
@@ -91,44 +101,37 @@ Include "gbs_mod.f03"
       call faf%getArray('ALPHA MO COEFFICIENTS',mqcVarOut=tmp)
       moCoeffs = tmp
 !
-!     Prepare the integration grid and quadrature weights for the intensity
-!     vector, I(theta).
+!     Fill in the grid of theta points.
 !
-      call print_memory_usage(iOut,'Before building grids.')
+      if(MEMChecks) call print_memory_usage(iOut,'Before building grids.')
       thetaStart = mqc_float(0)
-      nGridPointsTheta = 50
+      nGridPointsTheta = 5
       stepSizeTheta = Pi/mqc_float(nGridPointsTheta-1)
-      write(iOut,*)' nGridPointsTheta = ',nGridPointsTheta
-      write(iOut,*)' stepSizeTheta    = ',stepSizeTheta
-      write(iOut,*)' thetaStart       = ',thetaStart
       Allocate(quadGridTheta(nGridPointsTheta),  &
         quadWeightsTheta(nGridPointsTheta))
       call setup_quadrature_trapezoid1d(nGridPointsTheta,stepSizeTheta,  &
         thetaStart,quadGridTheta,quadWeightsTheta)
-      write(iOut,*)' max theta grid point: ',maxval(quadGridTheta)
+      write(iOut,2000) 'theta',nGridPointsTheta,stepSizeTheta
 !
 !     Prepare the integration grid and quadrature weights for the M evaluations.
 !     There is one M per theta.
 !
       cartStart = [ -6.0,-6.0,-6.0 ]
       cartEnd = [ 6.0,6.0,6.0 ]
-      nGridPointsM = 501
+      nGridPointsM = 101
       stepSizeIntM = (cartEnd(1)-cartStart(1))/mqc_float(nGridPointsM-1)
-      write(iOut,*)' nGridPointsM = ',nGridPointsM
-      write(iOut,*)' Total N Grid Points = ',nGridPointsM**3
-      write(iOut,*)' stepSizeIntM = ',stepSizeIntM
       Allocate(quadGridM(3,nGridPointsM**3),quadWeightsM(nGridPointsM**3),  &
         quadValues(nGridPointsM**3))
       call CPU_TIME(tStart1)
       call setup_quadrature_trapezoid3d(nGridPointsM,stepSizeIntM,  &
         cartStart,quadGridM,quadWeightsM)
+      write(iOut,2000) 'M quadrature',nGridPointsM**3,stepSizeIntM
       call CPU_TIME(tEnd1)
       write(iOut,*)' Time for 3D grid setup = ',tEnd1-tStart1
-      write(iOut,*)' max grid point: ',maxval(quadGridM)
 !
 !     Memory check...
 !
-      call print_memory_usage(iOut,'After building grids.')
+      if(MEMChecks) call print_memory_usage(iOut,'After building grids.')
 !
 !     Test that the chosen MO is normalized using quadrature.
 !
@@ -152,24 +155,29 @@ Include "gbs_mod.f03"
       call CPU_TIME(tEnd1)
       write(iOut,*)' Time for 1st dyson intensity = ',tEnd1-tStart1
       call CPU_TIME(tStart1)
+!hph+
+!      MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
+!        [ mqc_float(0),Pi/mqc_float(4),Pi/mqc_float(2),mqc_float(3)*Pi/mqc_float(4),Pi  ],kMag,  &
+!        laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
       MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
-        [ mqc_float(0),Pi/mqc_float(4),Pi/mqc_float(2),mqc_float(3)*Pi/mqc_float(4),Pi  ],kMag,  &
+        quadGridTheta,kMag,  &
         laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+!hph-
       call CPU_TIME(tEnd1)
       write(iOut,*)' Time for 2nd dyson intensity = ',tEnd1-tStart1
-      call mqc_print(MSquaredList,iOut,header='MSqaredList')
-
-      goto 999
-
-      MSquared = dysonPlaneWaveMatrixElementSquared(Pi/mqc_float(2),kMag,  &
-        laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
-      MSquared = dysonPlaneWaveMatrixElementSquared(Pi,kMag,  &
-        laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+!
+!     Print the intensity data table.
+!
+      write(iOut,3000) kMag*evPHartree
+      do i = 1,nGridPointsTheta
+        write(iOut,3010) quadGridTheta(i),MSquaredList(i)
+      endDo
+      write(iOut,3020)
 !
 !     The end of the program.
 !
   999 Continue
       call CPU_TIME(tEnd)
-      write(iOut,*)' TIME = ',tEnd-tStart
-      call print_memory_usage(iOut,'End of PAD.')
+      write(iOut,8999) tEnd-tStart
+      if(MEMChecks) call print_memory_usage(iOut,'End of PAD.')
       end program pad

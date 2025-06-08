@@ -11,6 +11,7 @@ include "memory_utils.f03"
 !
       implicit none
       integer(kind=int64),parameter::iOut=6
+      logical::MEMChecks=.false.
 !
 !
       CONTAINS
@@ -211,7 +212,7 @@ include "memory_utils.f03"
 !
       integer(kind=int64)::i
       real(kind=real64)::dysonVal,dysonNorm,epsilonDotMu,MReal,  &
-        MImaginary,w,tStart,tEnd
+        MImaginary,w
       real(kind=real64),dimension(3)::kVector
       real(kind=real64),dimension(:),allocatable::aoBasisValues,  &
         MValuesReal,MValuesImaginary,dysonNormTest
@@ -229,7 +230,6 @@ include "memory_utils.f03"
       Allocate(MValuesReal(SIZE(quadratureWeights)),  &
         MValuesImaginary(SIZE(quadratureWeights)),  &
         dysonNormTest(SIZE(quadratureWeights)))
-      call CPU_TIME(tStart)
 !$omp parallel do private(i, aoBasisValues, w, epsilonDotMu, dysonVal)  &
 !$omp&  shared(MValuesReal, MValuesImaginary, dysonNormTest)  &
 !$omp&  schedule(dynamic)
@@ -248,20 +248,10 @@ include "memory_utils.f03"
         MValuesImaginary(i) = -sin(w)*epsilonDotMu*dysonVal
       endDo
 !$omp end parallel do
-      call CPU_TIME(tEnd)
-      write(iOut,'(" time in loop: ",f8.2,"s")') tEnd-tStart
-      call CPU_TIME(tStart)
       dysonNorm = dot_product(quadratureWeights,dysonNormTest)
-      call CPU_TIME(tEnd)
-      write(iOut,'(" time for 1 dotprod: ",f8.2,"s")') tEnd-tStart
       MReal = dot_product(quadratureWeights,MValuesReal)
       MImaginary = dot_product(quadratureWeights,MValuesImaginary)
-      write(iOut,*)
-      write(iOut,*)
-      write(iOut,*)' Hrant - MReal      = ',MReal
-      write(iOut,*)'         MImaginary = ',MImaginary
       MSquared = MReal**2 + MImaginary**2
-      write(iOut,'(A,f6.4,3x,f20.12,3x,f20.12)')' Hrant - theta, MSquared, dysonNorm = ',theta,MSquared,dysonNorm
       return
       end function dysonPlaneWaveMatrixElementSquared
 
@@ -383,7 +373,7 @@ include "memory_utils.f03"
       real(kind=real64),dimension(:),allocatable::MSquared
 !
       integer(kind=int64)::i,j,nTheta,nGrid
-      real(kind=real64)::w,dysonVal,epsilonDotMu,tStart,tEnd
+      real(kind=real64)::w,dysonVal,epsilonDotMu
       real(kind=real64),dimension(:),allocatable::aoBasisValues,dysonNormTest
       real(kind=real64),dimension(:),allocatable::MReal,MImag
       real(kind=real64),dimension(3)::gridPoint,kVec
@@ -398,11 +388,10 @@ include "memory_utils.f03"
       MSquared = mqc_float(0)
       MReal = mqc_float(0)
       MImag = mqc_float(0)
-      call print_memory_usage(iOut,'dysonPlaneWaveMatrixElementSquaredThetaList before OMP loop.')
+      if(MEMChecks) call print_memory_usage(iOut,'dysonPlaneWaveMatrixElementSquaredThetaList before OMP loop.')
 !
 !     Loop through the quadrature points to evaluate integrand values.
 !
-      call CPU_TIME(tStart)
 !$omp parallel default(shared) private(i,j,w,dysonVal,epsilonDotMu,aoBasisValues,gridPoint,kVec) &
 !$omp& reduction(+:MReal, MImag, dysonNormTest)
       allocate(aoBasisValues(SIZE(dysonCoeffs)))
@@ -425,10 +414,8 @@ include "memory_utils.f03"
 !$omp end do
       deallocate(aoBasisValues)
 !$omp end parallel
-      call CPU_TIME(tEnd)
-      write(iOut, '(" time in loop: ",f8.2,"s")') tEnd - tStart
       MSquared = MReal**2 + MImag**2
-      call print_memory_usage(iOut,'dysonPlaneWaveMatrixElementSquaredThetaList after OMP loop.')
+      if(MEMChecks) call print_memory_usage(iOut,'dysonPlaneWaveMatrixElementSquaredThetaList after OMP loop.')
 !
       return
       end function dysonPlaneWaveMatrixElementSquaredThetaList
@@ -452,7 +439,7 @@ include "memory_utils.f03"
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
       class(mqc_basisSet),intent(in)::aoBasisSet
       real(kind=real64),dimension(:),intent(in),optional::moCoeffsKet
-      real(kind=real64)::integralValue,localValue,minValue,tStart,tEnd
+      real(kind=real64)::integralValue,localValue,minValue
 !
       integer(kind=int64)::i
       real(kind=real64),dimension(:),allocatable::aoBasisValues,valuesGrid
@@ -460,8 +447,7 @@ include "memory_utils.f03"
 !     Loop through the quadrature points to evaluate integrand values.
 !
       Allocate(valuesGrid(SIZE(quadratureWeights)))
-      call print_memory_usage(iOut,'moInnerProductNumericalIntegration before OMP loop.')
-      call CPU_TIME(tStart)
+      if(MEMChecks) call print_memory_usage(iOut,'moInnerProductNumericalIntegration before OMP loop.')
 !$omp parallel do private(i,aoBasisValues,localValue) shared(valuesGrid) schedule(dynamic)
       do i = 1,SIZE(quadratureWeights)
 !        aoBasisValues = basisSetValuesList(aoBasisSet,  &
@@ -477,14 +463,8 @@ include "memory_utils.f03"
         valuesGrid(i) = localValue
       endDo
 !$omp end parallel do
-      call CPU_TIME(tEnd)
-      write(iOut,'(" time in loop: ",f8.2,"s")') tEnd-tStart
       minValue = MinVal(valuesGrid)
-      write(iOut,'(" in moInnerProductNumericalIntegration, minimum value on the grid = ",f20.15)'),minValue
-      call CPU_TIME(tStart)
       integralValue = dot_product(quadratureWeights,valuesGrid)
-      call CPU_TIME(tEnd)
-      write(iOut,'(" time for 1 dotprod: ",f8.2,"s")') tEnd-tStart
       return
       end function moInnerProductNumericalIntegration
 
