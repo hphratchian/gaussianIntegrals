@@ -53,11 +53,17 @@ Include "gbs_mod.f03"
       call omp_set_num_threads(nOMP)
       fail = .false.
       write(iOut,1000)
+
 !hph+
 !!$OMP PARALLEL
 !PRINT *, "Thread number:", OMP_GET_THREAD_NUM()
 !!$OMP END PARALLEL
 !hph-
+
+!
+!     Memory check...
+!
+      call print_memory_usage(iOut,'At top of PAD.')
 !
 !     Read the FAF name and MO number (the one we use for the Dyson orbtial)
 !     from the command line. If the MO number isn't included, we set it to zero
@@ -88,6 +94,7 @@ Include "gbs_mod.f03"
 !     Prepare the integration grid and quadrature weights for the intensity
 !     vector, I(theta).
 !
+      call print_memory_usage(iOut,'Before building grids.')
       thetaStart = mqc_float(0)
       nGridPointsTheta = 50
       stepSizeTheta = Pi/mqc_float(nGridPointsTheta-1)
@@ -105,7 +112,7 @@ Include "gbs_mod.f03"
 !
       cartStart = [ -6.0,-6.0,-6.0 ]
       cartEnd = [ 6.0,6.0,6.0 ]
-      nGridPointsM = 251
+      nGridPointsM = 501
       stepSizeIntM = (cartEnd(1)-cartStart(1))/mqc_float(nGridPointsM-1)
       write(iOut,*)' nGridPointsM = ',nGridPointsM
       write(iOut,*)' Total N Grid Points = ',nGridPointsM**3
@@ -118,6 +125,10 @@ Include "gbs_mod.f03"
       call CPU_TIME(tEnd1)
       write(iOut,*)' Time for 3D grid setup = ',tEnd1-tStart1
       write(iOut,*)' max grid point: ',maxval(quadGridM)
+!
+!     Memory check...
+!
+      call print_memory_usage(iOut,'After building grids.')
 !
 !     Test that the chosen MO is normalized using quadrature.
 !
@@ -141,7 +152,7 @@ Include "gbs_mod.f03"
       call CPU_TIME(tEnd1)
       write(iOut,*)' Time for 1st dyson intensity = ',tEnd1-tStart1
       call CPU_TIME(tStart1)
-      MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList1(  &
+      MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
         [ mqc_float(0),Pi/mqc_float(4),Pi/mqc_float(2),mqc_float(3)*Pi/mqc_float(4),Pi  ],kMag,  &
         laserVector,moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
       call CPU_TIME(tEnd1)
@@ -160,5 +171,5 @@ Include "gbs_mod.f03"
   999 Continue
       call CPU_TIME(tEnd)
       write(iOut,*)' TIME = ',tEnd-tStart
-      write(iOut,*)
+      call print_memory_usage(iOut,'End of PAD.')
       end program pad
