@@ -204,25 +204,42 @@ include "memory_utils.f03"
 !
       implicit none
       real(kind=real64),intent(in)::theta,kMag
-      real(kind=real64),dimension(3),intent(in)::photonVector
+      real(kind=real64),dimension(3),intent(inOut)::photonVector
       real(kind=real64),dimension(:),intent(in)::dysonCoeffs,quadratureWeights
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
       real(kind=real64)::MSquared
       class(mqc_basisSet),intent(in)::aoBasisSet
 !
       integer(kind=int64)::i
-      real(kind=real64)::dysonVal,dysonNorm,epsilonDotMu,MReal,  &
-        MImaginary,w
+      real(kind=real64)::dysonVal,dysonNorm,epsilonDotMu,kVectorA,  &
+        kVectorB,MReal,MImaginary,w
       real(kind=real64),dimension(3)::kVector
       real(kind=real64),dimension(:),allocatable::aoBasisValues,  &
         MValuesReal,MValuesImaginary,dysonNormTest
 !
-!     Set up the elements of kVector. For now, we only consider the k-vector in
-!     the xz plane.
+!     Ensure the photon electric field vector is normalized. Then, check that
+!     it's aligned with x, y, or z. For now, other electric field vectors are
+!     not supported. Once we determine which electric field we have we Set up
+!     the elements of kVector.
 !
-      kVector(1) = sin(theta)
-      kVector(2) = mqc_float(0)
-      kVector(3) = cos(theta)
+      kVectorA = sin(theta)
+      kVectorB = cos(theta)
+      call mqc_normalizeVector(photonVector)
+      if(abs(photonVector(1)-mqc_float(1)).lt.mqc_small) then
+        kVector(1) = kVectorB
+        kVector(2) = kVectorA
+        kVector(3) = mqc_float(0)
+      elseIf(abs(photonVector(2)-mqc_float(1)).lt.mqc_small) then
+        kVector(1) = mqc_float(0)
+        kVector(2) = kVectorB
+        kVector(3) = kVectorA
+      elseIf(abs(photonVector(3)-mqc_float(1)).lt.mqc_small) then
+        kVector(1) = kVectorA
+        kVector(2) = mqc_float(0)
+        kVector(3) = kVectorB
+      else
+        call mqc_error('dysonPlaneWaveMatrixElementSquared: Invalid electric field.')
+      endIf
       kVector = kMag*kVector
 !
 !     Loop through the quadrature points to evaluate integrand values.
@@ -366,17 +383,17 @@ include "memory_utils.f03"
 !
       implicit none
       real(kind=real64),intent(in)::kMag
-      real(kind=real64),dimension(3),intent(in)::photonVector
+      real(kind=real64),dimension(3),intent(inOut)::photonVector
       real(kind=real64),dimension(:),intent(in)::thetaList,dysonCoeffs,quadratureWeights
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
       class(mqc_basisSet),intent(in)::aoBasisSet
       real(kind=real64),dimension(:),allocatable::MSquared
 !
       integer(kind=int64)::i,j,nTheta,nGrid
-      real(kind=real64)::w,dysonVal,epsilonDotMu
+      real(kind=real64)::kVectorA,kVectorB,w,dysonVal,epsilonDotMu
       real(kind=real64),dimension(:),allocatable::aoBasisValues,dysonNormTest
       real(kind=real64),dimension(:),allocatable::MReal,MImag
-      real(kind=real64),dimension(3)::gridPoint,kVec
+      real(kind=real64),dimension(3)::gridPoint,kVector
 !
 !     Allocate memory and initialize variables.
 !
@@ -388,11 +405,12 @@ include "memory_utils.f03"
       MSquared = mqc_float(0)
       MReal = mqc_float(0)
       MImag = mqc_float(0)
+      call mqc_normalizeVector(photonVector)
       if(MEMChecks) call print_memory_usage(iOut,'dysonPlaneWaveMatrixElementSquaredThetaList before OMP loop.')
 !
 !     Loop through the quadrature points to evaluate integrand values.
 !
-!$omp parallel default(shared) private(i,j,w,dysonVal,epsilonDotMu,aoBasisValues,gridPoint,kVec) &
+!$omp parallel default(shared) private(i,j,w,dysonVal,epsilonDotMu,aoBasisValues,gridPoint,kVector) &
 !$omp& reduction(+:MReal, MImag, dysonNormTest)
       allocate(aoBasisValues(SIZE(dysonCoeffs)))
 !$omp do schedule(dynamic)
@@ -403,10 +421,24 @@ include "memory_utils.f03"
         dysonNormTest(i) = dysonVal * dysonVal
         epsilonDotMu = dot_product(photonVector, gridPoint)
         do j = 1, nTheta
-          kVec(1) = sin(thetaList(j))
-          kVec(2) = 0.0_real64
-          kVec(3) = cos(thetaList(j))
-          w = kMag * dot_product(kVec, gridPoint)
+          kVectorA = sin(thetaList(j))
+          kVectorB = cos(thetaList(j))
+          if(abs(photonVector(1)-mqc_float(1)).lt.mqc_small) then
+            kVector(1) = kVectorB
+            kVector(2) = kVectorA
+            kVector(3) = mqc_float(0)
+          elseIf(abs(photonVector(2)-mqc_float(1)).lt.mqc_small) then
+            kVector(1) = mqc_float(0)
+            kVector(2) = kVectorB
+            kVector(3) = kVectorA
+          elseIf(abs(photonVector(3)-mqc_float(1)).lt.mqc_small) then
+            kVector(1) = kVectorA
+            kVector(2) = mqc_float(0)
+            kVector(3) = kVectorB
+          else
+            call mqc_error('dysonPlaneWaveMatrixElementSquared: Invalid electric field.')
+          endIf
+          w = kMag * dot_product(kVector, gridPoint)
           MReal(j) = MReal(j) + cos(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
           MImag(j) = MImag(j) - sin(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
         end do
