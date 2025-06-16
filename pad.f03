@@ -31,9 +31,10 @@ Include "gbs_mod.f03"
       integer(kind=int64)::i,j,iMODyson,nGridPointsM,nGridPointsTheta
       real(kind=real64)::tStart,tEnd,tstart1,tEnd1,stepSizeIntM,  &
         stepSizeTheta,thetaStart,moVal1,moVal2,kMag,MSquared0,  &
-        MSquared90
+        MSquared90,betaTmp
       real(kind=real64),dimension(3)::cartStart,cartEnd
-      real(kind=real64),dimension(nIntPlanes)::integratedIntensity,betaVals
+      real(kind=real64),dimension(nIntPlanes)::integratedIntensity,  &
+        betaValsParaPerp,betaValsFit
       real(kind=real64),dimension(3,nIntPlanes)::laserVector,orthogPlaneVector
       real(kind=real64),dimension(:),allocatable::quadGridTheta,  &
         quadWeightsTheta,quadWeightsM,basisValues,MSquaredList
@@ -65,8 +66,9 @@ Include "gbs_mod.f03"
  3100 format(/,1x,'I(0) = ',f15.8,3x,'I(90) = ',f15.8,/,  &
         1x,'beta = ',f15.8,/)
  3500 format(1x,'Integration Plane: ',A,'  |  Laser field: (',  &
-        f5.2,',',f5.2,',',f5.2,')  |  Intensity = ',f10.6,  &
-        '  |  beta = ',f10.6)
+        f5.2,',',f5.2,',',f5.2,')',/,  &
+        20x,'Intensity = ',f10.6,/,  &
+        20x,'beta(analytic) = ',f10.6,'  |  beta(fit) = ',f10.6)
  3510 format(1x,'Detector direction: ',A,  &
         '  |  Perpendicular direction: ',A,'  beta = ',f10.6)
  8998 format(/,1x,'Time for ',A,': ',f15.1,' s',/)
@@ -213,10 +215,9 @@ Include "gbs_mod.f03"
           header='C: plane vector...',blank_at_top=.true.)
         call CPU_TIME(tStart1)
         flush(iOut)
-        MSquaredList = mqc_float(99)
-!        MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
-!          quadGridTheta,kMag,  &
-!          laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+        MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
+          quadGridTheta,kMag,  &
+          laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
         call CPU_TIME(tEnd1)
         write(iOut,8998) 'MSquared(theta) list',tEnd1-tStart1
         flush(iOut)
@@ -224,6 +225,11 @@ Include "gbs_mod.f03"
           header='D: electric field vector...',blank_at_top=.true.)
         call mqc_print(orthogPlaneVector(:,i),iOut,  &
           header='D: plane vector...',blank_at_top=.true.)
+!
+!       Compute beta using a least squares fitting scheme.
+!
+        call betaLeastSquares(MSquaredList,quadGridTheta,betaTmp)
+        betaValsFit(i) = betaTmp
 !
 !       Print the intensity data table.
 !
@@ -239,7 +245,7 @@ Include "gbs_mod.f03"
 !       Evaluate the anisotropy parameter, beta, using the computed intensities
 !       at 0 and 90 degrees.
 !
-        betaVals(i) = betaParaPerp(MSquared0,MSquared90)
+        betaValsParaPerp(i) = betaParaPerp(MSquared0,MSquared90)
         write(iOut,*)
         write(iOut,*) MSquared0,MSquared90
         write(iOut,3100) MSquared0,MSquared90,  &
@@ -252,7 +258,7 @@ Include "gbs_mod.f03"
 !
       do i = 1,nIntPlanes
         write(iOut,3500) TRIM(intPlaneLabels(i)),laserVector(:,i),  &
-          integratedIntensity(i),betaVals(i)
+          integratedIntensity(i),betaValsParaPerp(i),betaValsFit(i)
       endDo
       write(iOut,3510) 'z','x',betaParaPerp(integratedIntensity(1),integratedIntensity(2))
       write(iOut,3510) 'z','y',betaParaPerp(integratedIntensity(3),integratedIntensity(4))

@@ -472,4 +472,113 @@ include "memory_utils.f03"
       end function betaParaPerp
 
 
+!
+!PROCEDURE MQC_leastSquaresFit
+      subroutine MQC_leastSquaresFit(x,y,slope,intercept,rSquared)
+!-----------------------------------------------------------------------
+!> @brief Perform a least squares fit to a straight line.
+!!
+!! Computes slope, intercept, and coefficient of determination (R^2)
+!! for a linear regression to data in y (dependent) and x (independent).
+!!
+!! @param[in]  x         Independent variable values
+!! @param[in]  y         Dependent variable values
+!! @param[out] slope     Best-fit slope (m)
+!! @param[out] intercept Best-fit y-intercept (b)
+!! @param[out] rSquared  Coefficient of determination (R^2)
+!!
+!! @note Input arrays must be of equal length and size >= 2.
+!-----------------------------------------------------------------------
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      real(kind=real64),dimension(:),intent(in)::x,y
+      real(kind=real64),intent(out)::slope,intercept,rSquared
+!
+      integer(kind=int64)::n,i
+      real(kind=real64)::xMean,yMean
+      real(kind=real64)::SSxy,SSxx,SSyy,SSR
+!
+!     Set n, the number of data points, and then do error trapping.
+!
+      n = size(x)
+      if(n.ne.size(y))  &
+        call mqc_error('Error: x and y arrays must have the same size.')
+      if(n.lt.2)  &
+        call mqc_error('Error: At least two points required for least-squares fitting.')
+!
+!     Solve the linear least squares problem.
+!
+      xMean     = sum(x)/mqc_float(n)
+      yMean     = sum(y)/mqc_float(n)
+      SSxy      = sum((x-xMean)*(y-yMean))
+      SSxx      = sum((x-xMean)**2)
+      SSyy      = sum((y-yMean)**2)
+      slope     = SSxy/SSxx
+      intercept = yMean-slope*xMean
+      SSR       = SSxx*slope**2
+      rSquared  = SSR/SSyy
+!
+      return
+      end subroutine MQC_leastSquaresFit
+
+!
+!PROCEDURE betaLeastSquares
+      subroutine betaLeastSquares(MSquaredList,thetaList,beta)
+!
+!     This subroutine is given a list of intensities as a function of theta and
+!     a list of theta values. Then, using a least squares fitting scheme, the
+!     routine returns the fitted value of beta.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+!
+      implicit none
+      real(kind=real64),dimension(:),intent(in)::MSquaredList,thetaList
+      real(kind=real64)::beta
+!
+      integer(kind=int64)::n
+      real(kind=real64)::slope,intercept,rSquared
+      real(kind=real64),dimension(:),allocatable::x,y
+!
+!     Before doing any work, check to see if all intensities are zero. If they
+!     are, then beta is zero.
+!
+      beta = mqc_float(0)
+      if(maxval(MSquaredList).lt.mqc_small) return
+!
+!     Set n and then allocate the temporary arrays.
+!
+      n = SIZE(MSquaredList)
+      Allocate(x(n),y(n))
+!
+!     Fill the x array by linearizing the anisotropy intensity equation's
+!     independent variable.
+!
+      x = mqc_float(3)*(Cos(thetaList))**2-mqc_float(1)
+      x = x/mqc_float(2)
+      y = MSquaredList/maxval(MSquaredList)
+!
+!     Call a least squares fitting routine to get slope and intercept values.
+!
+      call MQC_leastSquaresFit(x,y,slope,intercept,rSquared)
+      write(iOut,*)
+      write(iOut,*)' Hrant - in beta fitting...'
+      write(iOut,*)'          slope     = ',slope
+      write(iOut,*)'          intercept = ',intercept
+      write(iOut,*)'          rSquared  = ',rSquared
+      write(iOut,*)
+!
+!     Solve for beta from slope and intercept.
+!
+      beta = slope/intercept
+!
+      DeAllocate(x)
+      return
+      end subroutine betaLeastSquares
+
+
       end module gbs_mod
