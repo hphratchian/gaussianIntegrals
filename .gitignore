@@ -28,12 +28,17 @@
 
 # Executables
 *.exe
-*.out
+*.out*
 *.app
 
 # Gaussian files
-*.log
+*.log*
 *.chk
 *.fchk
 *.faf
 *.ffaf
+
+# General files HPH uses in testing and debugging
+dat*
+out*
+log*
