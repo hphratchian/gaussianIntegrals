@@ -254,6 +254,7 @@ include "memory_utils.f03"
       MReal = dot_product(quadratureWeights,MValuesReal)
       MImaginary = dot_product(quadratureWeights,MValuesImaginary)
       MSquared = MReal**2 + MImaginary**2
+      if(abs(MSquared).lt.mqc_small) MSquared = mqc_float(0)
       return
       end function dysonPlaneWaveMatrixElementSquared
 
@@ -323,8 +324,9 @@ include "memory_utils.f03"
           kVector = cos(thetaList(j))*photonVector+  &
             sin(thetaList(j))*orthogPlaneVector
           thetaTest = vectorAngle(kVector,photonVector)
-          write(iOut,'(1x,"theta=",f8.4," | thetaTest=",f8.4)') thetaList(j),thetaTest
-          if(abs(thetaList(j)-thetaTest).gt.0.001) write(iOut,'(4x,"PROBLEM")')
+!hph          write(iOut,'(1x,"theta=",f8.4," | thetaTest=",f8.4)') thetaList(j),thetaTest
+          if(abs(thetaList(j)-thetaTest).gt.0.001)  &
+            write(iOut,'(4x,"PROBLEM  ",f6.3,5(",",f6.3))') kVector,photonVector
 !hph write(iOut,'(A,5(3x,f10.3))')' angle = ',vectorAngle(kVector,photonVector),thetaList(j),kVectorA,kVectorB,dot_product(kVector,photonVector)
           w = kMag * dot_product(kVector, gridPoint)
           MReal(j) = MReal(j) + cos(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
@@ -335,6 +337,7 @@ include "memory_utils.f03"
       deallocate(aoBasisValues)
 !hph !$omp end parallel
       MSquared = MReal**2 + MImag**2
+      call mqc_vectorTrimZero(MSquared)
       if(MEMChecks) call print_memory_usage(iOut,'dysonPlaneWaveMatrixElementSquaredThetaList after OMP loop.')
 !
       return
@@ -385,6 +388,7 @@ include "memory_utils.f03"
 !$omp end parallel do
       minValue = MinVal(valuesGrid)
       integralValue = dot_product(quadratureWeights,valuesGrid)
+      if(abs(integralValue).lt.mqc_small) integralValue = mqc_float(0)
       return
       end function moInnerProductNumericalIntegration
 
@@ -431,7 +435,7 @@ include "memory_utils.f03"
 !
       implicit none
       real(kind=real64),dimension(:),intent(in)::v
-      logical::vMagnitude
+      real(kind=real64)::vMagnitude
 !
 !     Do the work...
 !
@@ -457,7 +461,13 @@ include "memory_utils.f03"
 !
 !     Do the work...
 !
-      beta = (IPara-IPerp)/((IPara/mqc_float(2))+IPerp)
+      beta = IPara-IPerp
+      if(abs(beta).lt.mqc_small) then
+        beta = mqc_float(0)
+      else
+        beta = beta/((IPara/mqc_float(2))+IPerp)
+      endIf
+!
       return
       end function betaParaPerp
 

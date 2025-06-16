@@ -23,11 +23,13 @@
 #
 FCPATH := $(FC)
 FC := $(notdir $(FCPATH))
-#FC          = nvfortran
-FC         ?= gfortran
+FC          = nvfortran
+#FC         ?= gfortran
+#FC          = gfortran
 MQCDir      = $(mqcinstall)
 LIBSALGEBRA = -llapack -lblas
-USEOMP      = yes
+#USEOMP      = yes
+USEOMP      = no
 #
 # Set-up flags that should not need to be changed by the user...
 #
