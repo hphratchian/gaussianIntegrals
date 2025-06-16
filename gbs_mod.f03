@@ -190,8 +190,8 @@ include "memory_utils.f03"
 !
 !PROCEDURE dysonPlaneWaveMatrixElementSquared
       function dysonPlaneWaveMatrixElementSquared(theta,kMag,  &
-        photonVector,dysonCoeffs,aoBasisSet,quadraturePoints,  &
-        quadratureWeights) result(MSquared)
+        photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,  &
+        quadraturePoints,quadratureWeights) result(MSquared)
 !
 !     This function computes the Dyson transition dipole squared for a given
 !     photon electric field vector, <photonVector>, the angle between that
@@ -204,7 +204,8 @@ include "memory_utils.f03"
 !
       implicit none
       real(kind=real64),intent(in)::theta,kMag
-      real(kind=real64),dimension(3),intent(inOut)::photonVector
+      real(kind=real64),dimension(3),intent(inOut)::photonVector,  &
+        orthogPlaneVector
       real(kind=real64),dimension(:),intent(in)::dysonCoeffs,quadratureWeights
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
       real(kind=real64)::MSquared
@@ -217,29 +218,13 @@ include "memory_utils.f03"
       real(kind=real64),dimension(:),allocatable::aoBasisValues,  &
         MValuesReal,MValuesImaginary,dysonNormTest
 !
-!     Ensure the photon electric field vector is normalized. Then, check that
-!     it's aligned with x, y, or z. For now, other electric field vectors are
-!     not supported. Once we determine which electric field we have we Set up
-!     the elements of kVector.
+!     Ensure the photon electric field vector and the orthogonal vector defining
+!     the integration plane are both normalized. Then, set-up the k-vector.
 !
-      kVectorA = sin(theta)
-      kVectorB = cos(theta)
       call mqc_normalizeVector(photonVector)
-      if(abs(photonVector(1)-mqc_float(1)).lt.mqc_small) then
-        kVector(1) = kVectorB
-        kVector(2) = kVectorA
-        kVector(3) = mqc_float(0)
-      elseIf(abs(photonVector(2)-mqc_float(1)).lt.mqc_small) then
-        kVector(1) = mqc_float(0)
-        kVector(2) = kVectorB
-        kVector(3) = kVectorA
-      elseIf(abs(photonVector(3)-mqc_float(1)).lt.mqc_small) then
-        kVector(1) = kVectorA
-        kVector(2) = mqc_float(0)
-        kVector(3) = kVectorB
-      else
-        call mqc_error('dysonPlaneWaveMatrixElementSquared: Invalid electric field.')
-      endIf
+      call mqc_normalizeVector(orthogPlaneVector)
+      kVector = cos(theta)*photonVector+  &
+        sin(theta)*orthogPlaneVector
       kVector = kMag*kVector
 !
 !     Loop through the quadrature points to evaluate integrand values.
@@ -272,104 +257,10 @@ include "memory_utils.f03"
       return
       end function dysonPlaneWaveMatrixElementSquared
 
-!hph+
-!!
-!!PROCEDURE dysonPlaneWaveMatrixElementSquaredThetaList
-!      function dysonPlaneWaveMatrixElementSquaredThetaList(thetaList,kMag,  &
-!        photonVector,dysonCoeffs,aoBasisSet,quadraturePoints,  &
-!        quadratureWeights) result(MSquared)
-!!
-!!     This function computes the Dyson transition dipole squared for a given
-!!     photon electric field vector, <photonVector>, the angle between that
-!!     vector and the outgoing plane wave, <theta>, and the magnitude of the
-!!     outgoing plane wave, <kMag>. This function assumes the outgoing plane wave
-!!     travels in the xz plane.
-!!
-!!
-!!     H. P. Hratchian, 2025.
-!!
-!      implicit none
-!      real(kind=real64),intent(in)::kMag
-!      real(kind=real64),dimension(3),intent(in)::photonVector
-!      real(kind=real64),dimension(:),intent(in)::thetaList,dysonCoeffs,quadratureWeights
-!      real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
-!      real(kind=real64),dimension(:),allocatable::MSquared
-!      real(kind=real64),dimension(:),allocatable::MValuesRealScratch,MValuesImaginaryScratch
-!      real(kind=real64),dimension(:),allocatable::MValuesRealScratch1,MValuesImaginaryScratch1
-!      class(mqc_basisSet),intent(in)::aoBasisSet
-!!
-!      integer(kind=int64)::i,j,nTheta
-!      real(kind=real64)::dysonVal,dysonNorm,epsilonDotMu,MReal,  &
-!        MImaginary,w,tStart,tEnd
-!      real(kind=real64),dimension(:),allocatable::aoBasisValues,  &
-!        dysonNormTest
-!      real(kind=real64),dimension(:,:),allocatable::kVectors,MValuesReal,  &
-!        MValuesImaginary
-!!
-!!     Allocate memory.
-!!
-!      nTheta = SIZE(thetaList)
-!      Allocate(MSquared(nTheta))
-!      Allocate(MValuesReal(SIZE(thetaList),SIZE(quadratureWeights)),  &
-!        MValuesImaginary(SIZE(thetaList),SIZE(quadratureWeights)),  &
-!        dysonNormTest(SIZE(quadratureWeights)))
-!      Allocate(MValuesRealScratch(nTheta),MValuesImaginaryScratch(nTheta))
-!      Allocate(MValuesRealScratch1(nTheta),MValuesImaginaryScratch1(nTheta))
-!!
-!!     Build the array of kVectors.
-!!
-!      do j = 1,nTheta
-!        kVectors(1,j) = sin(thetaList(j))
-!        kVectors(2,j) = mqc_float(0)
-!        kVectors(3,j) = cos(thetaList(j))
-!      endDo
-!!
-!!     Loop through the quadrature points to evaluate integrand values.
-!!
-!      call CPU_TIME(tStart)
-!!$omp parallel do private(i, j, aoBasisValues, w, epsilonDotMu, dysonVal, MValuesRealScratch, MValuesImaginaryScratch) &
-!!$omp& shared(MValuesReal, MValuesImaginary, dysonNormTest, thetaList, quadraturePoints, dysonCoeffs, photonVector, kVectors) &
-!!$omp& schedule(dynamic)
-!      do i = 1,SIZE(quadratureWeights)
-!        call basisSetValuesList1(aoBasisSet,  &
-!          quadraturePoints(:,i),aoBasisValues)
-!        dysonVal = dot_product(dysonCoeffs,aoBasisValues)
-!        dysonNormTest(i) = dysonVal*dysonVal
-!        epsilonDotMu = photonVector(1)*quadraturePoints(1,i)  &
-!          + photonVector(2)*quadraturePoints(2,i)  &
-!          + photonVector(3)*quadraturePoints(3,i)
-!        do j = 1,nTheta
-!          w = kMag*(kVectors(1,j)*quadraturePoints(1,i)  &
-!            + kVectors(2,j)*quadraturePoints(2,i)  &
-!            + kVectors(3,j)*quadraturePoints(3,i))
-!          MValuesRealScratch(j) = cos(w)*epsilonDotMu*dysonVal
-!          MValuesImaginaryScratch(j) = -sin(w)*epsilonDotMu*dysonVal
-!        endDo
-!        MValuesReal(:,i) = MValuesRealScratch
-!        MValuesImaginary(:,i) = MValuesImaginaryScratch
-!      endDo
-!!$omp end parallel do
-!      call CPU_TIME(tEnd)
-!      write(iOut,'(" time in loop: ",f8.2,"s")') tEnd-tStart
-!      call CPU_TIME(tStart)
-!      dysonNorm = dot_product(quadratureWeights,dysonNormTest)
-!      call CPU_TIME(tEnd)
-!      write(iOut,'(" time for 1 dotprod: ",f8.2,"s")') tEnd-tStart
-!      MValuesRealScratch1 = MatMul(MValuesReal,quadratureWeights)
-!      call mqc_print(MValuesRealScratch1,iOut,header='MValuesRealScratch 2')
-!      MValuesImaginaryScratch1 = MatMul(MValuesImaginary,quadratureWeights)
-!      call mqc_print(MValuesImaginaryScratch1,iOut,header='MValuesImaginaryScratch 2')
-!      call mqc_print(MValuesRealScratch1*MValuesRealScratch1+MValuesImaginaryScratch1*MValuesImaginaryScratch1,iOut,header='MSquared 2')
-!      MSquared = MValuesRealScratch1*MValuesRealScratch1+MValuesImaginaryScratch1*MValuesImaginaryScratch1
-!!
-!      return
-!      end function dysonPlaneWaveMatrixElementSquaredThetaList
-!hph-
-
 !
 !PROCEDURE dysonPlaneWaveMatrixElementSquaredThetaList
       function dysonPlaneWaveMatrixElementSquaredThetaList(thetaList,  &
-        kMag,photonVector,dysonCoeffs,aoBasisSet,quadraturePoints,&
+        kMag,photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,quadraturePoints,&
         quadratureWeights) result(MSquared)
 !
 !     This function computes the Dyson transition dipole squared for a given
@@ -383,14 +274,14 @@ include "memory_utils.f03"
 !
       implicit none
       real(kind=real64),intent(in)::kMag
-      real(kind=real64),dimension(3),intent(inOut)::photonVector
+      real(kind=real64),dimension(3),intent(inOut)::photonVector,orthogPlaneVector
       real(kind=real64),dimension(:),intent(in)::thetaList,dysonCoeffs,quadratureWeights
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
       class(mqc_basisSet),intent(in)::aoBasisSet
       real(kind=real64),dimension(:),allocatable::MSquared
 !
       integer(kind=int64)::i,j,nTheta,nGrid
-      real(kind=real64)::kVectorA,kVectorB,w,dysonVal,epsilonDotMu
+      real(kind=real64)::kVectorA,kVectorB,w,dysonVal,epsilonDotMu,thetaTest
       real(kind=real64),dimension(:),allocatable::aoBasisValues,dysonNormTest
       real(kind=real64),dimension(:),allocatable::MReal,MImag
       real(kind=real64),dimension(3)::gridPoint,kVector
@@ -408,12 +299,20 @@ include "memory_utils.f03"
       call mqc_normalizeVector(photonVector)
       if(MEMChecks) call print_memory_usage(iOut,'dysonPlaneWaveMatrixElementSquaredThetaList before OMP loop.')
 !
+!     Ensure the photon electric field vector is normalize and also set up
+!     orthogPlaneVector.
+!
+      if(dot_product(photonVector,photonVector).gt.MQC_Small)  &
+        call mqc_normalizeVector(photonVector)
+      if(dot_product(orthogPlaneVector,orthogPlaneVector).gt.MQC_Small)  &
+        call mqc_normalizeVector(orthogPlaneVector)
+!
 !     Loop through the quadrature points to evaluate integrand values.
 !
-!$omp parallel default(shared) private(i,j,w,dysonVal,epsilonDotMu,aoBasisValues,gridPoint,kVector) &
-!$omp& reduction(+:MReal, MImag, dysonNormTest)
+!hph !$omp parallel default(shared) private(i,j,w,dysonVal,epsilonDotMu,aoBasisValues,gridPoint,kVector) &
+!hph !$omp& reduction(+:MReal, MImag, dysonNormTest)
       allocate(aoBasisValues(SIZE(dysonCoeffs)))
-!$omp do schedule(dynamic)
+!hph !$omp do schedule(dynamic)
       do i = 1, nGrid
         gridPoint = quadraturePoints(:,i)
         call basisSetValuesList1(aoBasisSet, gridPoint, aoBasisValues)
@@ -421,31 +320,20 @@ include "memory_utils.f03"
         dysonNormTest(i) = dysonVal * dysonVal
         epsilonDotMu = dot_product(photonVector, gridPoint)
         do j = 1, nTheta
-          kVectorA = sin(thetaList(j))
-          kVectorB = cos(thetaList(j))
-          if(abs(photonVector(1)-mqc_float(1)).lt.mqc_small) then
-            kVector(1) = kVectorB
-            kVector(2) = kVectorA
-            kVector(3) = mqc_float(0)
-          elseIf(abs(photonVector(2)-mqc_float(1)).lt.mqc_small) then
-            kVector(1) = mqc_float(0)
-            kVector(2) = kVectorB
-            kVector(3) = kVectorA
-          elseIf(abs(photonVector(3)-mqc_float(1)).lt.mqc_small) then
-            kVector(1) = kVectorA
-            kVector(2) = mqc_float(0)
-            kVector(3) = kVectorB
-          else
-            call mqc_error('dysonPlaneWaveMatrixElementSquared: Invalid electric field.')
-          endIf
+          kVector = cos(thetaList(j))*photonVector+  &
+            sin(thetaList(j))*orthogPlaneVector
+          thetaTest = vectorAngle(kVector,photonVector)
+          write(iOut,'(1x,"theta=",f8.4," | thetaTest=",f8.4)') thetaList(j),thetaTest
+          if(abs(thetaList(j)-thetaTest).gt.0.001) write(iOut,'(4x,"PROBLEM")')
+!hph write(iOut,'(A,5(3x,f10.3))')' angle = ',vectorAngle(kVector,photonVector),thetaList(j),kVectorA,kVectorB,dot_product(kVector,photonVector)
           w = kMag * dot_product(kVector, gridPoint)
           MReal(j) = MReal(j) + cos(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
           MImag(j) = MImag(j) - sin(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
         end do
       end do
-!$omp end do
+!hph !$omp end do
       deallocate(aoBasisValues)
-!$omp end parallel
+!hph !$omp end parallel
       MSquared = MReal**2 + MImag**2
       if(MEMChecks) call print_memory_usage(iOut,'dysonPlaneWaveMatrixElementSquaredThetaList after OMP loop.')
 !
@@ -499,5 +387,79 @@ include "memory_utils.f03"
       integralValue = dot_product(quadratureWeights,valuesGrid)
       return
       end function moInnerProductNumericalIntegration
+
+!
+!PROCEDURE vectorAngle
+      function vectorAngle(v1,v2,degrees) result(angle)
+!
+!     This function computes the angle between two vectors, v1 and v2. The dummy
+!     argument degrees is optional, defaulting to .FALSE., and indicates if the
+!     angle should be reported in degrees (.TRUE.) or radians (.FALSE.).
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      real(kind=real64),dimension(:),intent(in)::v1,v2
+      logical,optional::degrees
+      real(kind=real64)::angle
+      real(kind=real64)::denominator
+!
+!     Do the work...
+!
+      denominator = vectorMagnitude(v1)*vectorMagnitude(v2)
+      if(denominator.gt.MQC_Small) then
+        angle = acos(dot_product(v1,v2)/denominator)
+      else
+        angle = mqc_float(0)
+      endIf
+      if(PRESENT(degrees)) then
+        if(degrees) angle = mqc_float(180)*angle/Pi
+      endIf
+!
+      return
+      end function vectorAngle
+
+!
+!PROCEDURE vectorMagnitude
+      function vectorMagnitude(v) result(vMagnitude)
+!
+!     This function computes the magnitude of vector v.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      real(kind=real64),dimension(:),intent(in)::v
+      logical::vMagnitude
+!
+!     Do the work...
+!
+      vMagnitude = sqrt(dot_product(v,v))
+      return
+      end function vectorMagnitude
+
+!
+!PROCEDURE betaParaPerp
+      function betaParaPerp(IPara,IPerp) result(beta)
+!
+!     This function evaluates the photoelectron anisotropy parameter, beta,
+!     using the analytic form based on the angular intensities when the photon
+!     electric field is parallel and perpendicular to the detected detachment
+!     direction.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      real(kind=real64),intent(in)::IPara,IPerp
+      real(kind=real64)::beta
+!
+!     Do the work...
+!
+      beta = (IPara-IPerp)/((IPara/mqc_float(2))+IPerp)
+      return
+      end function betaParaPerp
+
 
       end module gbs_mod

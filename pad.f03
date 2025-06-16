@@ -27,12 +27,12 @@ Include "gbs_mod.f03"
       USE OMP_LIB
       USE gbs_mod
       implicit none
-      integer(kind=int64),parameter::nOMP=48
+      integer(kind=int64),parameter::nOMP=1
       integer(kind=int64)::i,j,iMODyson,nGridPointsM,nGridPointsTheta
       real(kind=real64)::tStart,tEnd,tstart1,tEnd1,stepSizeIntM,  &
         stepSizeTheta,thetaStart,moVal1,moVal2,kMag,MSquared0,MSquared90
       real(kind=real64),dimension(3)::cartStart,cartEnd,integratedIntensity
-      real(kind=real64),dimension(3,3)::laserVector
+      real(kind=real64),dimension(3,3)::laserVector,orthogPlaneVector
       real(kind=real64),dimension(:),allocatable::quadGridTheta,  &
         quadWeightsTheta,quadWeightsM,basisValues,MSquaredList
       real(kind=real64),dimension(:,:),allocatable::quadGridM,moCoeffs
@@ -49,7 +49,7 @@ Include "gbs_mod.f03"
 !     Format statements.
 !
  1000 format(1x,'Program PAD.')
- 1100 format(/,1x,'Current laser field: (',f6.2,',',f6.2,',',f6.2,')   Intensity = ',f25.8)
+ 1100 format(/,1x,'Current laser field: (',f6.2,',',f6.2,',',f6.2,')')
  2000 format(1x,'Data for the ',A,' grid:',/,  &
         3x,'nPoints = ',i15,' step size = ',f20.5)
  3000 format(/,1x,55('-'),/,  &
@@ -63,6 +63,7 @@ Include "gbs_mod.f03"
         1x,'beta = ',f25.8,/)
  3500 format(1x,'Laser field: (',f5.2,',',f5.2,',',f5.2,')   Intensity = ',f10.6)
  3510 format(1x,'Beta(z|',A,') = ',f10.6)
+ 8998 format(/,1x,'Time for ',A,': ',f15.1,' s',/)
  8999 format(/,1x,'Job Time: ',f15.1,' s')
 !
 !
@@ -102,11 +103,15 @@ Include "gbs_mod.f03"
 !     line.
       call faf%load(fafName)
 !
-!     Set the laser polarization vector.
+!     Set the laser electric field vector and the orthogonal vector defining the
+!     ingegration plane to be used with each electric field..
 !
       laserVector(:,1) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
       laserVector(:,2) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
       laserVector(:,3) = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
+      orthogPlaneVector(:,1) = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
+      orthogPlaneVector(:,2) = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
+      orthogPlaneVector(:,3) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
 !
 !     Read the basis set and MO coefficients from faf.
 !
@@ -139,7 +144,7 @@ Include "gbs_mod.f03"
         cartStart,quadGridM,quadWeightsM)
       write(iOut,2000) 'M quadrature',nGridPointsM**3,stepSizeIntM
       call CPU_TIME(tEnd1)
-      write(iOut,*)' Time for 3D grid setup = ',tEnd1-tStart1
+      write(iOut,8998) '3D grid setup',tEnd1-tStart1
       flush(iOut)
 !
 !     Memory check...
@@ -156,7 +161,7 @@ Include "gbs_mod.f03"
         quadGridM,quadWeightsM,basisSet)
       write(iOut,*)
       call CPU_TIME(tEnd1)
-      write(iOut,*)' Time for norm test = ',tEnd1-tStart1
+      write(iOut,8998) 'norm test',tEnd1-tStart1
       flush(iOut)
 !
 !     Integrate the Dyson/plane wave matrix elements as a function of theta.
@@ -164,28 +169,50 @@ Include "gbs_mod.f03"
       kMag = mqc_float(1)/mqc_float(500)
       do i = 1,3
         write(iOut,1100) laserVector(:,i)
+
+        call mqc_print(laserVector(:,i),iOut,  &
+          header='A: electric field vector...',blank_at_top=.true.)
+        call mqc_print(orthogPlaneVector(:,i),iOut,  &
+          header='A: plane vector...',blank_at_top=.true.)
+
         call CPU_TIME(tStart1)
         MSquared0 = dysonPlaneWaveMatrixElementSquared(mqc_float(0),kMag,  &
-          laserVector(:,i),moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+          laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
+          basisSet,quadGridM,quadWeightsM)
         call CPU_TIME(tEnd1)
-        write(iOut,*)' Time for MSquared0  = ',tEnd1-tStart1
+        write(iOut,8998) 'MSquared0',tEnd1-tStart1
+
+        call mqc_print(laserVector(:,i),iOut,  &
+          header='B: electric field vector...',blank_at_top=.true.)
+        call mqc_print(orthogPlaneVector(:,i),iOut,  &
+          header='B: plane vector...',blank_at_top=.true.)
+
         call CPU_TIME(tStart1)
         MSquared90 = dysonPlaneWaveMatrixElementSquared(Pi/mqc_float(2),  &
-          kMag,laserVector(:,i),moCoeffs(:,iMODyson),basisSet,quadGridM,  &
-          quadWeightsM)
+          kMag,laserVector(:,i),orthogPlaneVector(:,i),  &
+          moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
         call CPU_TIME(tEnd1)
-        write(iOut,*)' Time for MSquared90 = ',tEnd1-tStart1
-        call CPU_TIME(tStart1)
+        write(iOut,8998) 'MSquared90',tEnd1-tStart1
+
         call mqc_print(laserVector(:,i),iOut,  &
-          header='electric field vector...',blank_at_top=.true.)
+          header='C: electric field vector...',blank_at_top=.true.)
+        call mqc_print(orthogPlaneVector(:,i),iOut,  &
+          header='C: plane vector...',blank_at_top=.true.)
+
+        call CPU_TIME(tStart1)
         flush(iOut)
         MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
           quadGridTheta,kMag,  &
-          laserVector(:,i),moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+          laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
         call CPU_TIME(tEnd1)
-        write(iOut,*)' Time for MSquared(theta) list = ',tEnd1-tStart1
-        write(iOUt,*)
+        write(iOut,8998) 'MSquared(theta) list',tEnd1-tStart1
         flush(iOut)
+
+        call mqc_print(laserVector(:,i),iOut,  &
+          header='D: electric field vector...',blank_at_top=.true.)
+        call mqc_print(orthogPlaneVector(:,i),iOut,  &
+          header='D: plane vector...',blank_at_top=.true.)
+
 !
 !       Print the intensity data table.
 !
@@ -202,7 +229,7 @@ Include "gbs_mod.f03"
 !       at 0 and 90 degrees.
 !
         write(iOut,3100) MSquared0,MSquared90,  &
-          (MSquared0-MSquared90)/((MSquared0/mqc_float(2))+MSquared90)
+          betaParaPerp(MSquared0,MSquared90)
         flush(iOut)
       endDo
 !
@@ -216,6 +243,9 @@ Include "gbs_mod.f03"
         (integratedIntensity(3)+integratedIntensity(1)/mqc_float(2))
       write(iOut,3510) 'y',(integratedIntensity(3)-integratedIntensity(2))/  &
         (integratedIntensity(3)+integratedIntensity(2)/mqc_float(2))
+
+
+
 !
 !     The end of the program.
 !
