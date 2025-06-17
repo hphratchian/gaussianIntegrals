@@ -475,20 +475,9 @@ include "memory_utils.f03"
 !
 !PROCEDURE MQC_leastSquaresFit
       subroutine MQC_leastSquaresFit(x,y,slope,intercept,rSquared)
-!-----------------------------------------------------------------------
-!> @brief Perform a least squares fit to a straight line.
-!!
-!! Computes slope, intercept, and coefficient of determination (R^2)
-!! for a linear regression to data in y (dependent) and x (independent).
-!!
-!! @param[in]  x         Independent variable values
-!! @param[in]  y         Dependent variable values
-!! @param[out] slope     Best-fit slope (m)
-!! @param[out] intercept Best-fit y-intercept (b)
-!! @param[out] rSquared  Coefficient of determination (R^2)
-!!
-!! @note Input arrays must be of equal length and size >= 2.
-!-----------------------------------------------------------------------
+!
+!     This subroutine evaluates a 1D least squares fit for the data set x and
+!     y(x). The output of the routine is the slope, intercept, and R**2 value.
 !
 !
 !     H. P. Hratchian, 2025.
@@ -496,7 +485,6 @@ include "memory_utils.f03"
       implicit none
       real(kind=real64),dimension(:),intent(in)::x,y
       real(kind=real64),intent(out)::slope,intercept,rSquared
-!
       integer(kind=int64)::n,i
       real(kind=real64)::xMean,yMean
       real(kind=real64)::SSxy,SSxx,SSyy,SSR
