@@ -27,7 +27,8 @@ Include "gbs_mod.f03"
       USE OMP_LIB
       USE gbs_mod
       implicit none
-      integer(kind=int64),parameter::nOMP=1,nIntPlanes=6
+      integer(kind=int64),parameter::nOMP=28,nIntPlanes=6
+      logical,parameter::extraPrint=.false.
       integer(kind=int64)::i,j,iMODyson,nGridPointsM,nGridPointsTheta
       real(kind=real64)::tStart,tEnd,tstart1,tEnd1,stepSizeIntM,  &
         stepSizeTheta,thetaStart,moVal1,moVal2,kMag,MSquared0,  &
@@ -56,23 +57,20 @@ Include "gbs_mod.f03"
  1100 format(/,1x,'Current laser field: (',f6.2,',',f6.2,',',f6.2,')')
  2000 format(1x,'Data for the ',A,' grid:',/,  &
         3x,'nPoints = ',i15,' step size = ',f20.5)
+ 2500 format(1x,'Dyson orbital self-overlap = ',f12.8)
  3000 format(/,1x,55('-'),/,  &
         12x,'Intensity as a Function of Theta',/,  &
         18x,'(kMag = ',f8.3,' eV)',/,  &
         9x,'theta (rad)',15x,'I(theta)',/,  &
         1x,55('='))
  3010 format(9x,f7.3,3x,f25.8)
- 3020 format(1x,55('='),/)
- 3100 format(/,1x,'I(0) = ',f15.8,3x,'I(90) = ',f15.8,/,  &
-        1x,'beta = ',f15.8,/)
+ 3020 format(1x,55('='))
+ 3100 format(1x,'I(0) = ',f12.6,3x,'I(90) = ',f12.6,3x,'beta = ',f12.6)
  3500 format(1x,'Integration Plane: ',A,'  |  Laser field: (',  &
-        f5.2,',',f5.2,',',f5.2,')',/,  &
-        20x,'Intensity = ',f10.6,/,  &
+        f5.2,',',f5.2,',',f5.2,')  |  Intensity = ',f10.6,/,  &
         20x,'beta(analytic) = ',f10.6,'  |  beta(fit) = ',f10.6)
- 3510 format(1x,'Detector direction: ',A,  &
-        '  |  Perpendicular direction: ',A,'  beta = ',f10.6)
- 8998 format(/,1x,'Time for ',A,': ',f15.1,' s',/)
- 8999 format(/,1x,'Job Time: ',f15.1,' s')
+ 8998 format(1x,'Time for ',A,': ',f15.1,' s')
+ 8999 format(/,1x,'Job Time: ',f15.1,' s',/,1x,'PAD Complete.')
 !
 !
 !     Begin the program.
@@ -81,6 +79,7 @@ Include "gbs_mod.f03"
       call omp_set_num_threads(nOMP)
       fail = .false.
       write(iOut,1000)
+      call mqc_version_print(iOut)
 !
 !     Memory check...
 !
@@ -173,13 +172,12 @@ Include "gbs_mod.f03"
 !
 !     Test that the chosen MO is normalized using quadrature.
 !
-      call mqc_print(moCoeffs(:,iMODyson),iOut,header='Dyson coefficients')
+      if(extraPrint)  &
+        call mqc_print(moCoeffs(:,iMODyson),iOut,header='Dyson coefficients')
       call CPU_TIME(tStart1)
-      write(iOut,*)
-      write(iOut,*)' Test of <dyson|dyson> = ',  &
+      write(iOut,2500)  &
         moInnerProductNumericalIntegration(moCoeffs(:,iMODyson),  &
         quadGridM,quadWeightsM,basisSet)
-      write(iOut,*)
       call CPU_TIME(tEnd1)
       write(iOut,8998) 'norm test',tEnd1-tStart1
       flush(iOut)
@@ -189,30 +187,18 @@ Include "gbs_mod.f03"
       kMag = mqc_float(1)/mqc_float(500)
       do i = 1,nIntPlanes
         write(iOut,1100) laserVector(:,i)
-        call mqc_print(laserVector(:,i),iOut,  &
-          header='A: electric field vector...',blank_at_top=.true.)
-        call mqc_print(orthogPlaneVector(:,i),iOut,  &
-          header='A: plane vector...',blank_at_top=.true.)
         call CPU_TIME(tStart1)
         MSquared0 = dysonPlaneWaveMatrixElementSquared(mqc_float(0),kMag,  &
           laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
           basisSet,quadGridM,quadWeightsM)
         call CPU_TIME(tEnd1)
-        write(iOut,8998) 'MSquared0',tEnd1-tStart1
-        call mqc_print(laserVector(:,i),iOut,  &
-          header='B: electric field vector...',blank_at_top=.true.)
-        call mqc_print(orthogPlaneVector(:,i),iOut,  &
-          header='B: plane vector...',blank_at_top=.true.)
+        write(iOut,8998) 'MSquared0 ',tEnd1-tStart1
         call CPU_TIME(tStart1)
         MSquared90 = dysonPlaneWaveMatrixElementSquared(Pi/mqc_float(2),  &
           kMag,laserVector(:,i),orthogPlaneVector(:,i),  &
           moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
         call CPU_TIME(tEnd1)
         write(iOut,8998) 'MSquared90',tEnd1-tStart1
-        call mqc_print(laserVector(:,i),iOut,  &
-          header='C: electric field vector...',blank_at_top=.true.)
-        call mqc_print(orthogPlaneVector(:,i),iOut,  &
-          header='C: plane vector...',blank_at_top=.true.)
         call CPU_TIME(tStart1)
         flush(iOut)
         MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
@@ -221,10 +207,6 @@ Include "gbs_mod.f03"
         call CPU_TIME(tEnd1)
         write(iOut,8998) 'MSquared(theta) list',tEnd1-tStart1
         flush(iOut)
-        call mqc_print(laserVector(:,i),iOut,  &
-          header='D: electric field vector...',blank_at_top=.true.)
-        call mqc_print(orthogPlaneVector(:,i),iOut,  &
-          header='D: plane vector...',blank_at_top=.true.)
 !
 !       Compute beta using a least squares fitting scheme.
 !
@@ -238,16 +220,12 @@ Include "gbs_mod.f03"
           write(iOut,3010) quadGridTheta(j),MSquaredList(j)
         endDo
         write(iOut,3020)
-        write(iOut,*)' Integrated I = ',dot_product(MSquaredList,quadWeightsTheta)
         integratedIntensity(i) = dot_product(MSquaredList,quadWeightsTheta)
-        write(iOut,*)
 !
 !       Evaluate the anisotropy parameter, beta, using the computed intensities
 !       at 0 and 90 degrees.
 !
         betaValsParaPerp(i) = betaParaPerp(MSquared0,MSquared90)
-        write(iOut,*)
-        write(iOut,*) MSquared0,MSquared90
         write(iOut,3100) MSquared0,MSquared90,  &
           betaParaPerp(MSquared0,MSquared90)
         flush(iOut)
@@ -260,8 +238,6 @@ Include "gbs_mod.f03"
         write(iOut,3500) TRIM(intPlaneLabels(i)),laserVector(:,i),  &
           integratedIntensity(i),betaValsParaPerp(i),betaValsFit(i)
       endDo
-      write(iOut,3510) 'z','x',betaParaPerp(integratedIntensity(1),integratedIntensity(2))
-      write(iOut,3510) 'z','y',betaParaPerp(integratedIntensity(3),integratedIntensity(4))
 !
 !     The end of the program.
 !

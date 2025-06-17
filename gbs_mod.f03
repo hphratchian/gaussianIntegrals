@@ -562,18 +562,10 @@ include "memory_utils.f03"
       x = x/mqc_float(2)
       y = MSquaredList/maxval(MSquaredList)
 !
-!     Call a least squares fitting routine to get slope and intercept values.
+!     Call the least squares fitting routine to get slope and intercept values.
+!     Then, compuate the value of beta.
 !
       call MQC_leastSquaresFit(x,y,slope,intercept,rSquared)
-      write(iOut,*)
-      write(iOut,*)' Hrant - in beta fitting...'
-      write(iOut,*)'          slope     = ',slope
-      write(iOut,*)'          intercept = ',intercept
-      write(iOut,*)'          rSquared  = ',rSquared
-      write(iOut,*)
-!
-!     Solve for beta from slope and intercept.
-!
       beta = slope/intercept
 !
       DeAllocate(x)

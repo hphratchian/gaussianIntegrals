@@ -1,0 +1,151 @@
+ Program PAD.
+
+ This program uses the Merced Quantum Chemistry Package (MQCPack).
+ MQCPack Version 25.6.2
+
+
+ Data in loadGaussianBasisSet
+   nBasis=    10   nShells=     4   nPrims=    12
+
+ Data for the theta grid:
+   nPoints =               7 step size =              0.52360
+ Data for the M quadrature grid:
+   nPoints =         1030301 step size =              0.12000
+ Time for 3D grid setup:             0.0 s
+ Dyson orbital self-overlap =   1.00000000
+ Time for norm test:             0.1 s
+
+ Current laser field: (  0.00,  0.00,  1.00)
+ Time for MSquared0 :             0.2 s
+ Time for MSquared90:             0.2 s
+ Time for MSquared(theta) list:             2.4 s
+
+ -------------------------------------------------------
+            Intensity as a Function of Theta
+                  (kMag =    0.054 eV)
+         theta (rad)               I(theta)
+ =======================================================
+           0.000                  0.00000000
+           0.524                  0.00000000
+           1.047                  0.00000000
+           1.571                  0.00000000
+           2.094                  0.00000000
+           2.618                  0.00000000
+           3.142                  0.00000000
+ =======================================================
+ I(0) =     0.000000   I(90) =     0.000000   beta =     0.000000
+
+ Current laser field: (  1.00,  0.00,  0.00)
+ Time for MSquared0 :             0.2 s
+ Time for MSquared90:             0.1 s
+ Time for MSquared(theta) list:             2.4 s
+
+ -------------------------------------------------------
+            Intensity as a Function of Theta
+                  (kMag =    0.054 eV)
+         theta (rad)               I(theta)
+ =======================================================
+           0.000                  0.00000000
+           0.524                  0.00000000
+           1.047                  0.00000000
+           1.571                  0.00000000
+           2.094                  0.00000000
+           2.618                  0.00000000
+           3.142                  0.00000000
+ =======================================================
+ I(0) =     0.000000   I(90) =     0.000000   beta =     0.000000
+
+ Current laser field: (  0.00,  0.00,  1.00)
+ Time for MSquared0 :             0.1 s
+ Time for MSquared90:             0.1 s
+ Time for MSquared(theta) list:             2.4 s
+
+ -------------------------------------------------------
+            Intensity as a Function of Theta
+                  (kMag =    0.054 eV)
+         theta (rad)               I(theta)
+ =======================================================
+           0.000                  0.00000000
+           0.524                  0.00000000
+           1.047                  0.00000000
+           1.571                  0.00000000
+           2.094                  0.00000000
+           2.618                  0.00000000
+           3.142                  0.00000000
+ =======================================================
+ I(0) =     0.000000   I(90) =     0.000000   beta =     0.000000
+
+ Current laser field: (  0.00,  1.00,  0.00)
+ Time for MSquared0 :             0.2 s
+ Time for MSquared90:             0.2 s
+ Time for MSquared(theta) list:             2.4 s
+
+ -------------------------------------------------------
+            Intensity as a Function of Theta
+                  (kMag =    0.054 eV)
+         theta (rad)               I(theta)
+ =======================================================
+           0.000                 52.56439706
+           0.524                 52.56440443
+           1.047                 52.56441915
+           1.571                 52.56442651
+           2.094                 52.56441915
+           2.618                 52.56440443
+           3.142                 52.56439706
+ =======================================================
+ I(0) =    52.564397   I(90) =    52.564427   beta =     0.000000
+
+ Current laser field: (  0.00,  1.00,  0.00)
+ Time for MSquared0 :             0.1 s
+ Time for MSquared90:             0.1 s
+ Time for MSquared(theta) list:             2.4 s
+
+ -------------------------------------------------------
+            Intensity as a Function of Theta
+                  (kMag =    0.054 eV)
+         theta (rad)               I(theta)
+ =======================================================
+           0.000                 52.56439706
+           0.524                 52.56448373
+           1.047                 52.56465707
+           1.571                 52.56474374
+           2.094                 52.56465707
+           2.618                 52.56448373
+           3.142                 52.56439706
+ =======================================================
+ I(0) =    52.564397   I(90) =    52.564744   beta =    -0.000004
+
+ Current laser field: (  1.00,  0.00,  0.00)
+ Time for MSquared0 :             0.2 s
+ Time for MSquared90:             0.1 s
+ Time for MSquared(theta) list:             2.4 s
+
+ -------------------------------------------------------
+            Intensity as a Function of Theta
+                  (kMag =    0.054 eV)
+         theta (rad)               I(theta)
+ =======================================================
+           0.000                  0.00000000
+           0.524                  0.00000000
+           1.047                  0.00000000
+           1.571                  0.00000000
+           2.094                  0.00000000
+           2.618                  0.00000000
+           3.142                  0.00000000
+ =======================================================
+ I(0) =     0.000000   I(90) =     0.000000   beta =     0.000000
+ Integration Plane: xz  |  Laser field: ( 0.00, 0.00, 1.00)  |  Intensity =   0.000000
+                    beta(analytic) =   0.000000  |  beta(fit) =   0.000000
+ Integration Plane: xz  |  Laser field: ( 1.00, 0.00, 0.00)  |  Intensity =   0.000000
+                    beta(analytic) =   0.000000  |  beta(fit) =   0.000000
+ Integration Plane: yz  |  Laser field: ( 0.00, 0.00, 1.00)  |  Intensity =   0.000000
+                    beta(analytic) =   0.000000  |  beta(fit) =   0.000000
+ Integration Plane: yz  |  Laser field: ( 0.00, 1.00, 0.00)  |  Intensity = 165.135970
+                    beta(analytic) =   0.000000  |  beta(fit) =   0.000000
+ Integration Plane: xy  |  Laser field: ( 0.00, 1.00, 0.00)  |  Intensity = 165.136468
+                    beta(analytic) =  -0.000004  |  beta(fit) =  -0.000004
+ Integration Plane: xy  |  Laser field: ( 1.00, 0.00, 0.00)  |  Intensity =   0.000000
+                    beta(analytic) =   0.000000  |  beta(fit) =   0.000000
+
+ Job Time:            16.4 s
+ PAD Complete.

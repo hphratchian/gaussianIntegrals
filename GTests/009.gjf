@@ -1,0 +1,11 @@
+%chk=009
+#p test gfinput 6-31g(d) pop=full output=faf
+
+test
+
+0  1
+f
+f  1  1.3
+
+009.faf
+
