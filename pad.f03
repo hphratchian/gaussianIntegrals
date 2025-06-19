@@ -8,8 +8,9 @@ Include "gbs_mod.f03"
 !           1. FAF filename (required)
 !           2. (alpha) MO number to serve as the Dyson orbital (optional;
 !              default=1)
-!           3. number of spatial grid points (optional; default=501)
-!           4. number of angles to evaluate from 0 --> pi (optional; default=31)
+!           3. magnitude of the k-vector in eV0
+!           4. number of spatial grid points (optional; default=101)
+!           5. number of angles to evaluate from 0 --> pi (optional; default=15)
 !
 !     CODE STATUS: At this time, it seems that the program works numerically.
 !     However, some tests result in very large PAD intensities. I'm not sure if
@@ -27,7 +28,7 @@ Include "gbs_mod.f03"
       USE OMP_LIB
       USE gbs_mod
       implicit none
-      integer(kind=int64),parameter::nOMP=28,nIntPlanes=6
+      integer(kind=int64),parameter::nOMP=12,nIntPlanes=3
       logical,parameter::extraPrint=.false.
       integer(kind=int64)::i,j,iMODyson,nGridPointsM,nGridPointsTheta
       real(kind=real64)::tStart,tEnd,tstart1,tEnd1,stepSizeIntM,  &
@@ -54,21 +55,26 @@ Include "gbs_mod.f03"
 !     Format statements.
 !
  1000 format(1x,'Program PAD.')
- 1100 format(/,1x,'Current laser field: (',f6.2,',',f6.2,',',f6.2,')')
+ 1100 format(1x,'Current laser field: (',f6.2,',',f6.2,',',f6.2,')')
  2000 format(1x,'Data for the ',A,' grid:',/,  &
         3x,'nPoints = ',i15,' step size = ',f20.5)
- 2500 format(1x,'Dyson orbital self-overlap = ',f12.8)
+ 2500 format(/,1x,'Dyson orbital self-overlap = ',f12.8)
  3000 format(/,1x,55('-'),/,  &
         12x,'Intensity as a Function of Theta',/,  &
         18x,'(kMag = ',f8.3,' eV)',/,  &
         9x,'theta (rad)',15x,'I(theta)',/,  &
-        1x,55('='))
+        1x,55('='),/)
  3010 format(9x,f7.3,3x,f25.8)
  3020 format(1x,55('='))
  3100 format(1x,'I(0) = ',f12.6,3x,'I(90) = ',f12.6,3x,'beta = ',f12.6)
- 3500 format(1x,'Integration Plane: ',A,'  |  Laser field: (',  &
+ 3500 format(/,1x,87('-'),/,  &
+        31x,'Summary of PAD Calculation',/,  &
+        34x,'(kMag = ',f8.3,' eV)',/,  &
+        1x,87('='))
+ 3510 format(1x,'Integration Plane: ',A,'  |  Laser field: (',  &
         f5.2,',',f5.2,',',f5.2,')  |  Intensity = ',f10.6,/,  &
         20x,'beta(analytic) = ',f10.6,'  |  beta(fit) = ',f10.6)
+ 3520 format(1x,87('='))
  8998 format(1x,'Time for ',A,': ',f15.1,' s')
  8999 format(/,1x,'Job Time: ',f15.1,' s',/,1x,'PAD Complete.')
 !
@@ -89,48 +95,54 @@ Include "gbs_mod.f03"
 !     from the command line. If the MO number isn't included, we set it to zero
 !     here and later default it to the HOMO.
 !
-      iMODyson = 0
-      nGridPointsM = 0
-      nGridPointsTheta = 0
       if(command_argument_count().lt.1.or.  &
-        command_argument_count().gt.4)  &
-        call mqc_error('PAD expects 1-4 command line arguments.')
+        command_argument_count().gt.5)  &
+        call mqc_error('PAD expects 1-5 command line arguments.')
       call get_command_argument(1,fafName)
-      if(command_argument_count().ge.2)   &
+      if(command_argument_count().ge.2) then
         call mqc_get_command_argument_integer(2,iMODyson)
-      if(iMODyson.eq.0) iMODyson = 1
-      if(command_argument_count().ge.3)  &
-        call mqc_get_command_argument_integer(3,nGridPointsM)
-      if(nGridPointsM.eq.0) nGridPointsM = 501
-      if(command_argument_count().ge.4)  &
-        call mqc_get_command_argument_integer(4,nGridPointsTheta)
-      if(nGridPointsTheta.eq.0) nGridPointsTheta = 31
+      else
+        iMODyson = 1
+      endIf
+      if(command_argument_count().ge.3) then
+        call mqc_get_command_argument_real(3,kMag)
+      else
+        kMag = mqc_float(1)/mqc_float(500)
+      endIf
+      if(command_argument_count().ge.4) then
+        call mqc_get_command_argument_integer(4,nGridPointsM)
+      else
+        nGridPointsM = 101
+      endIf
+      if(command_argument_count().ge.5) then
+        call mqc_get_command_argument_integer(5,nGridPointsTheta)
+      else
+        nGridPointsTheta = 15
+      endIf
 !
 !     Load the FAF and set the MO number if it wasn't provided on the command
 !     line.
       call faf%load(fafName)
 !
 !     Set the laser electric field vector and the orthogonal vector defining the
-!     ingegration plane to be used with each electric field..
+!     integration plane to be used with each electric field. At present we
+!     hardwire 3 experiments with the electric field vector and planar slice of
+!     photoelectron transition dipole matrices:
+!           1. eVector: (1,0,0)  |  plane: yx
+!           2. eVector: (0,1,0)  |  plane: yz
+!           3. eVector: (0,0,1)  |  plane: xz
 !
-      intPlaneLabels(1)      = 'xz'
-      laserVector(:,1)       = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
-      orthogPlaneVector(:,1) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
-      intPlaneLabels(2)      = 'xz'
-      laserVector(:,2)       = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
+      intPlaneLabels(1) = 'xy'
+      laserVector(:,1) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
+      orthogPlaneVector(:,1) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
+!
+      intPlaneLabels(2) = 'yz'
+      laserVector(:,2) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
       orthogPlaneVector(:,2) = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
-      intPlaneLabels(3) = 'yz'
-      laserVector(:,3) = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
-      orthogPlaneVector(:,3) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
-      intPlaneLabels(4) = 'yz'
-      laserVector(:,4) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
-      orthogPlaneVector(:,4) = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
-      intPlaneLabels(5) = 'xy'
-      laserVector(:,5) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
-      orthogPlaneVector(:,5) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
-      intPlaneLabels(6) = 'xy'
-      laserVector(:,6) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
-      orthogPlaneVector(:,6) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
+!
+      intPlaneLabels(3)      = 'zx'
+      laserVector(:,3)       = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
+      orthogPlaneVector(:,3) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
 !
 !     Read the basis set and MO coefficients from faf.
 !
@@ -184,7 +196,6 @@ Include "gbs_mod.f03"
 !
 !     Integrate the Dyson/plane wave matrix elements as a function of theta.
 !
-      kMag = mqc_float(1)/mqc_float(500)
       do i = 1,nIntPlanes
         write(iOut,1100) laserVector(:,i)
         call CPU_TIME(tStart1)
@@ -215,7 +226,7 @@ Include "gbs_mod.f03"
 !
 !       Print the intensity data table.
 !
-        write(iOut,3000) kMag*evPHartree
+        write(iOut,3000) kMag/evPHartree
         do j = 1,nGridPointsTheta
           write(iOut,3010) quadGridTheta(j),MSquaredList(j)
         endDo
@@ -234,10 +245,12 @@ Include "gbs_mod.f03"
 !     Print out the integrated planar intensity for each laser vector. Then
 !     compute an analytic beta.
 !
+      write(iOut,3500) kMag
       do i = 1,nIntPlanes
-        write(iOut,3500) TRIM(intPlaneLabels(i)),laserVector(:,i),  &
+        write(iOut,3510) TRIM(intPlaneLabels(i)),laserVector(:,i),  &
           integratedIntensity(i),betaValsParaPerp(i),betaValsFit(i)
       endDo
+      write(iOut,3520)
 !
 !     The end of the program.
 !

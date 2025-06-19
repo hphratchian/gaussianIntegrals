@@ -471,47 +471,6 @@ include "memory_utils.f03"
       return
       end function betaParaPerp
 
-
-!
-!PROCEDURE MQC_leastSquaresFit
-      subroutine MQC_leastSquaresFit(x,y,slope,intercept,rSquared)
-!
-!     This subroutine evaluates a 1D least squares fit for the data set x and
-!     y(x). The output of the routine is the slope, intercept, and R**2 value.
-!
-!
-!     H. P. Hratchian, 2025.
-!
-      implicit none
-      real(kind=real64),dimension(:),intent(in)::x,y
-      real(kind=real64),intent(out)::slope,intercept,rSquared
-      integer(kind=int64)::n,i
-      real(kind=real64)::xMean,yMean
-      real(kind=real64)::SSxy,SSxx,SSyy,SSR
-!
-!     Set n, the number of data points, and then do error trapping.
-!
-      n = size(x)
-      if(n.ne.size(y))  &
-        call mqc_error('Error: x and y arrays must have the same size.')
-      if(n.lt.2)  &
-        call mqc_error('Error: At least two points required for least-squares fitting.')
-!
-!     Solve the linear least squares problem.
-!
-      xMean     = sum(x)/mqc_float(n)
-      yMean     = sum(y)/mqc_float(n)
-      SSxy      = sum((x-xMean)*(y-yMean))
-      SSxx      = sum((x-xMean)**2)
-      SSyy      = sum((y-yMean)**2)
-      slope     = SSxy/SSxx
-      intercept = yMean-slope*xMean
-      SSR       = SSxx*slope**2
-      rSquared  = SSR/SSyy
-!
-      return
-      end subroutine MQC_leastSquaresFit
-
 !
 !PROCEDURE betaLeastSquares
       subroutine betaLeastSquares(MSquaredList,thetaList,beta)
