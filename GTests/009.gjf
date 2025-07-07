@@ -1,5 +1,6 @@
 %chk=009
 #p test gfinput 6-31g(d) pop=full output=faf
+int(preComputeXCGridPoints)
 
 test
 

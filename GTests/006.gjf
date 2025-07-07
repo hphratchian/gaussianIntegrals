@@ -1,5 +1,6 @@
 %chk=006
 #p test gfinput 6-31g(d) pop=full
+int(grid=sg1,preComputeXCGridPoints)
 iop(3/33=2)
 output=faf
 

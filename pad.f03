@@ -8,9 +8,9 @@ Include "gbs_mod.f03"
 !           1. FAF filename (required)
 !           2. (alpha) MO number to serve as the Dyson orbital (optional;
 !              default=1)
-!           3. magnitude of the k-vector in eV0
-!           4. number of spatial grid points (optional; default=101)
-!           5. number of angles to evaluate from 0 --> pi (optional; default=15)
+!           3. magnitude of the k-vector in eV
+!           4. number of angles to evaluate from 0 --> pi (optional; default=15)
+!           5. number of spatial grid points (optional; default=101)
 !
 !     CODE STATUS: At this time, it seems that the program works numerically.
 !     However, some tests result in very large PAD intensities. I'm not sure if
@@ -33,21 +33,25 @@ Include "gbs_mod.f03"
       integer(kind=int64)::i,j,iMODyson,nGridPointsM,nGridPointsTheta
       real(kind=real64)::tStart,tEnd,tstart1,tEnd1,stepSizeIntM,  &
         stepSizeTheta,thetaStart,moVal1,moVal2,kMag,MSquared0,  &
-        MSquared90,betaTmp
+        MSquared90
       real(kind=real64),dimension(3)::cartStart,cartEnd
       real(kind=real64),dimension(nIntPlanes)::integratedIntensity,  &
-        betaValsParaPerp,betaValsFit
+        betaValsParaPerp,betaValsFit,rSquared
       real(kind=real64),dimension(3,nIntPlanes)::laserVector,orthogPlaneVector
       real(kind=real64),dimension(:),allocatable::quadGridTheta,  &
-        quadWeightsTheta,quadWeightsM,basisValues,MSquaredList
-      real(kind=real64),dimension(:,:),allocatable::quadGridM,moCoeffs
-      logical::fail=.false.
+        quadWeightsTheta,quadWeightsM,basisValues,MSquaredList,  &
+        quadGridPhi
+      real(kind=real64),dimension(:,:),allocatable::quadGridM,moCoeffs,  &
+        MSquaredList2
+      logical::fail=.false.,found
       character(len=256)::fafName
       character(len=2),dimension(nIntPlanes)::intPlaneLabels
       type(mqc_gaussian_unformatted_matrix_file)::faf
       type(mqc_basisset)::basisSet
       type(MQC_Variable)::tmp
+      real(kind=real64),dimension(3)::v1,v2,v3
 !
+      real(kind=real64)::tmpBeta,tmpR2
       real(kind=real64),dimension(:,:),allocatable::basisIntegrals,  &
         overlapMatrix
       real(kind=real64),dimension(:),allocatable::quadValues
@@ -63,7 +67,7 @@ Include "gbs_mod.f03"
         12x,'Intensity as a Function of Theta',/,  &
         18x,'(kMag = ',f8.3,' eV)',/,  &
         9x,'theta (rad)',15x,'I(theta)',/,  &
-        1x,55('='),/)
+        1x,55('='))
  3010 format(9x,f7.3,3x,f25.8)
  3020 format(1x,55('='))
  3100 format(1x,'I(0) = ',f12.6,3x,'I(90) = ',f12.6,3x,'beta = ',f12.6)
@@ -73,8 +77,11 @@ Include "gbs_mod.f03"
         1x,87('='))
  3510 format(1x,'Integration Plane: ',A,'  |  Laser field: (',  &
         f5.2,',',f5.2,',',f5.2,')  |  Intensity = ',f10.6,/,  &
-        20x,'beta(analytic) = ',f10.6,'  |  beta(fit) = ',f10.6)
+        20x,'beta(ratio) = ',f10.6,'  |  beta(fit) = ',f10.6,  &
+        ' (R**2 = ',f8.5,')')
  3520 format(1x,87('='))
+ 3530 format(1x,'Average Beta (ratio) = ',f10.6,/,  &
+        1x,'Average Beta (fit)   = ',f10.6,/)
  8998 format(1x,'Time for ',A,': ',f15.1,' s')
  8999 format(/,1x,'Job Time: ',f15.1,' s',/,1x,'PAD Complete.')
 !
@@ -110,15 +117,31 @@ Include "gbs_mod.f03"
         kMag = mqc_float(1)/mqc_float(500)
       endIf
       if(command_argument_count().ge.4) then
-        call mqc_get_command_argument_integer(4,nGridPointsM)
+        call mqc_get_command_argument_integer(4,nGridPointsTheta)
+      else
+        nGridPointsTheta = 15
+        nGridPointsTheta = 5
+      endIf
+      if(command_argument_count().ge.5) then
+        call mqc_get_command_argument_integer(5,nGridPointsM)
       else
         nGridPointsM = 101
       endIf
-      if(command_argument_count().ge.5) then
-        call mqc_get_command_argument_integer(5,nGridPointsTheta)
-      else
-        nGridPointsTheta = 15
-      endIf
+
+
+!hph+
+!!
+!!     Test of cross product function.
+!!
+!      v1 = [ -1.0,0.0,0.0 ]
+!      v2 = [ 0.0,1.0,0.0 ]
+!      v3 = mqc_crossProduct3D_real(v1,v2)
+!      call mqc_print(v1,iOut,header='v1')
+!      call mqc_print(v2,iOut,header='v2')
+!      call mqc_print(v3,iOut,header='v3')
+!      goto 999
+!hph-
+
 !
 !     Load the FAF and set the MO number if it wasn't provided on the command
 !     line.
@@ -149,18 +172,7 @@ Include "gbs_mod.f03"
       call loadGaussianBasisSet(faf,basisSet)
       call faf%getArray('ALPHA MO COEFFICIENTS',mqcVarOut=tmp)
       moCoeffs = tmp
-!
-!     Fill in the grid of theta points.
-!
-      if(MEMChecks) call print_memory_usage(iOut,'Before building grids.')
-      thetaStart = mqc_float(0)
-      stepSizeTheta = Pi/mqc_float(nGridPointsTheta-1)
-      Allocate(quadGridTheta(nGridPointsTheta),  &
-        quadWeightsTheta(nGridPointsTheta))
-      call setup_quadrature_trapezoid1d(nGridPointsTheta,stepSizeTheta,  &
-        thetaStart,quadGridTheta,quadWeightsTheta)
-      write(iOut,2000) 'theta',nGridPointsTheta,stepSizeTheta
-      flush(iOut)
+
 !
 !     Prepare the integration grid and quadrature weights for the M evaluations.
 !     There is one M per theta.
@@ -177,6 +189,50 @@ Include "gbs_mod.f03"
       call CPU_TIME(tEnd1)
       write(iOut,8998) '3D grid setup',tEnd1-tStart1
       flush(iOut)
+!hph+
+!
+!     Test code to load Gaussian's quadrature grid points and weights from the
+!     FAF.
+!
+      DeAllocate(quadWeightsM,quadGridM)
+      write(iOut,*)
+      write(iOut,*)' Hrant - calling MQC get_quad routine...'
+      call MQC_Gaussian_FAF_Get_3DQuadratureGrid(faf,  &
+        quadWeightsM,quadGridM,found)
+      write(iOut,*)' Hrant - back from MQC get_quad routine...'
+      write(iOut,*)'         found               = ',found
+      write(iOut,*)'         Alloc(quadWeightsM) = ',Allocated(quadWeightsM)
+      write(iOut,*)'         Alloc(quadGridM)    = ',Allocated(quadGridM)
+      write(iOut,*)'         No. of grid points  = ',SIZE(quadWeightsM)
+      write(iOut,*)
+!hph-
+
+!
+!     Fill in the grid of I(theta) points.
+!
+      if(MEMChecks) call print_memory_usage(iOut,'Before building grids.')
+      thetaStart = mqc_float(0)
+      stepSizeTheta = Pi/mqc_float(nGridPointsTheta-1)
+      Allocate(quadGridTheta(nGridPointsTheta),  &
+        quadWeightsTheta(nGridPointsTheta))
+      call setup_quadrature_trapezoid1d(nGridPointsTheta,stepSizeTheta,  &
+        thetaStart,quadGridTheta,quadWeightsTheta)
+      write(iOut,2000) 'theta',nGridPointsTheta,stepSizeTheta
+      call mqc_print(quadGridTheta,iOut,header='Theta Grid')
+      call mqc_print(quadGridTheta/Pi,iOut,header='Theta Grid/Pi')
+      flush(iOut)
+
+!hph+
+      Allocate(quadGridPhi(2*nGridPointsTheta-2))
+      quadGridPhi(1) = mqc_float(0)
+      do i = 2,2*nGridPointsTheta-2
+        quadGridPhi(i) = quadGridPhi(i-1) + stepSizeTheta
+      endDo
+      call mqc_print(quadGridPhi,iOut,header='phi grid')
+      call mqc_print(quadGridPhi/Pi,iOut,header='phi grid/Pi')
+!      goto 999
+!hph-
+
 !
 !     Memory check...
 !
@@ -212,17 +268,33 @@ Include "gbs_mod.f03"
         write(iOut,8998) 'MSquared90',tEnd1-tStart1
         call CPU_TIME(tStart1)
         flush(iOut)
+
+!hph+
         MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
-          quadGridTheta,kMag,  &
-          laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+          quadGridTheta,kMag,laserVector(:,i),orthogPlaneVector(:,i),  &
+          moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+        MSquaredList2 = dysonPlaneWaveMatrixElementSquaredPhiThetaList(  &
+          quadGridPhi,quadGridTheta,kMag,laserVector(:,i),  &
+          orthogPlaneVector(:,i),moCoeffs(:,iMODyson),basisSet,  &
+          quadGridM,quadWeightsM)
+        call mqc_print(MSquaredList,iOut,header='MSquaredList',blank_at_top=.true.)
+        call mqc_print(MSquaredList2,iOut,header='MSquaredList2',blank_at_top=.true.)
+        do j = 1,2*nGridPointsTheta-2
+          call betaLeastSquares(MSquaredList2(j,:),quadGridTheta,  &
+            tmpBeta,tmpR2)
+          write(iOut,*) quadGridPhi(j)/Pi,tmpBeta,tmpR2
+        endDo
+        write(iOut,*)
+!hph-
+
         call CPU_TIME(tEnd1)
         write(iOut,8998) 'MSquared(theta) list',tEnd1-tStart1
         flush(iOut)
 !
 !       Compute beta using a least squares fitting scheme.
 !
-        call betaLeastSquares(MSquaredList,quadGridTheta,betaTmp)
-        betaValsFit(i) = betaTmp
+        call betaLeastSquares(MSquaredList,quadGridTheta,betaValsFit(i),  &
+          rSquared(i))
 !
 !       Print the intensity data table.
 !
@@ -248,9 +320,12 @@ Include "gbs_mod.f03"
       write(iOut,3500) kMag
       do i = 1,nIntPlanes
         write(iOut,3510) TRIM(intPlaneLabels(i)),laserVector(:,i),  &
-          integratedIntensity(i),betaValsParaPerp(i),betaValsFit(i)
+          integratedIntensity(i),betaValsParaPerp(i),betaValsFit(i),  &
+          rSquared(i)
       endDo
       write(iOut,3520)
+      write(iOut,3530) SUM(betaValsParaPerp)/mqc_float(nIntPlanes),  &
+        SUM(betaValsFit)/mqc_float(nIntPlanes)
 !
 !     The end of the program.
 !

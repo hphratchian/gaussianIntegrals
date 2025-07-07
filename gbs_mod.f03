@@ -344,6 +344,97 @@ include "memory_utils.f03"
       end function dysonPlaneWaveMatrixElementSquaredThetaList
 
 !
+!PROCEDURE dysonPlaneWaveMatrixElementSquaredPhiThetaList
+      function dysonPlaneWaveMatrixElementSquaredPhiThetaList(phiList,thetaList,  &
+        kMag,photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,quadraturePoints,&
+        quadratureWeights) result(MSquared)
+!
+!     This function computes the Dyson transition dipole squared for a given
+!     photon electric field vector, <photonVector>, the angle between that
+!     vector and the outgoing plane wave, <theta>, and the magnitude of the
+!     outgoing plane wave, <kMag>. This function assumes the outgoing plane wave
+!     travels in the xz plane.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      real(kind=real64),intent(in)::kMag
+      real(kind=real64),dimension(3),intent(inOut)::photonVector,orthogPlaneVector
+      real(kind=real64),dimension(:),intent(in)::phiList,thetaList,  &
+        dysonCoeffs,quadratureWeights
+      real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
+      class(mqc_basisSet),intent(in)::aoBasisSet
+      real(kind=real64),dimension(:,:),allocatable::MSquared
+!
+      integer(kind=int64)::i,j,k,nPhi,nTheta,nGrid
+      real(kind=real64)::kVectorA,kVectorB,w,dysonVal,epsilonDotMu,thetaTest
+      real(kind=real64),dimension(:),allocatable::aoBasisValues,dysonNormTest
+      real(kind=real64),dimension(:,:),allocatable::MReal,MImag
+      real(kind=real64),dimension(3)::orthog2PlaneVector,planeVector,gridPoint,kVector
+!
+!     Allocate memory and initialize variables.
+!
+      nPhi   = SIZE(phiList)
+      nTheta = SIZE(thetaList)
+      nGrid  = SIZE(quadratureWeights)
+      Allocate(MSquared(nPhi,nTheta))
+      Allocate(MReal(nPhi,nTheta),MImag(nPhi,nTheta))
+      Allocate(dysonNormTest(nGrid))
+      MSquared = mqc_float(0)
+      MReal = mqc_float(0)
+      MImag = mqc_float(0)
+      call mqc_normalizeVector(photonVector)
+      if(MEMChecks) call print_memory_usage(iOut,  &
+        'dysonPlaneWaveMatrixElementSquaredPhiThetaList before OMP loop.')
+!
+!     Ensure the photon electric field vector is normalize and also set up
+!     orthogPlaneVector. Then form the orthog2PlaneVector, which is orthogonal
+!     to orthogPlaneVector and the electric field vector. Vectors
+!     orthogPlaneVector and orthog2PlaneVector are used to construct the plane
+!     (with the photon electric field vector) of integration for M at a given
+!     phi (which is given relative to orthogPlaneVector..
+!
+      if(dot_product(photonVector,photonVector).gt.MQC_Small)  &
+        call mqc_normalizeVector(photonVector)
+      if(dot_product(orthogPlaneVector,orthogPlaneVector).gt.MQC_Small)  &
+        call mqc_normalizeVector(orthogPlaneVector)
+      orthog2PlaneVector = mqc_crossProduct3D_real(photonVector,orthogPlaneVector)
+!
+!     Loop through the quadrature points to evaluate integrand values.
+!
+      allocate(aoBasisValues(SIZE(dysonCoeffs)))
+      do i = 1, nGrid
+        gridPoint = quadraturePoints(:,i)
+        call basisSetValuesList1(aoBasisSet, gridPoint, aoBasisValues)
+        dysonVal = dot_product(dysonCoeffs, aoBasisValues)
+        dysonNormTest(i) = dysonVal * dysonVal
+        epsilonDotMu = dot_product(photonVector, gridPoint)
+        do j = 1, nTheta
+          do k = 1,nPhi
+            planeVector = cos(phiList(k))*orthogPlaneVector+  &
+              sin(phiList(k))*orthog2PlaneVector
+            kVector = cos(thetaList(j))*photonVector+  &
+              sin(thetaList(j))*planeVector
+            thetaTest = vectorAngle(kVector,photonVector)
+            if(abs(thetaList(j)-thetaTest).gt.0.001)  &
+              write(iOut,'(4x,"PROBLEM  ",f6.3,5(",",f6.3))') kVector,photonVector
+            w = kMag * dot_product(kVector, gridPoint)
+            MReal(k,j) = MReal(k,j) + cos(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
+            MImag(k,j) = MImag(k,j) - sin(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
+          endDo
+        end do
+      end do
+      deallocate(aoBasisValues)
+      MSquared = MReal**2 + MImag**2
+      call mqc_matrixTrimZero(MSquared)
+      if(MEMChecks) call print_memory_usage(iOut,  &
+        'dysonPlaneWaveMatrixElementSquaredPhiThetaList after OMP loop.')
+!
+      return
+      end function dysonPlaneWaveMatrixElementSquaredPhiThetaList
+
+!
 !PROCEDURE moInnerProductNumericalIntegration
       function moInnerProductNumericalIntegration(moCoeffsBra,  &
         quadraturePoints,quadratureWeights,aoBasisSet,moCoeffsKet)  &
@@ -473,7 +564,7 @@ include "memory_utils.f03"
 
 !
 !PROCEDURE betaLeastSquares
-      subroutine betaLeastSquares(MSquaredList,thetaList,beta)
+      subroutine betaLeastSquares(MSquaredList,thetaList,beta,rSquared)
 !
 !     This subroutine is given a list of intensities as a function of theta and
 !     a list of theta values. Then, using a least squares fitting scheme, the
@@ -485,10 +576,10 @@ include "memory_utils.f03"
 !
       implicit none
       real(kind=real64),dimension(:),intent(in)::MSquaredList,thetaList
-      real(kind=real64)::beta
+      real(kind=real64)::beta,rSquared
 !
       integer(kind=int64)::n
-      real(kind=real64)::slope,intercept,rSquared
+      real(kind=real64)::slope,intercept
       real(kind=real64),dimension(:),allocatable::x,y
 !
 !     Before doing any work, check to see if all intensities are zero. If they
