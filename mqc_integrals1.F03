@@ -986,7 +986,41 @@
 !
       return
       end subroutine MQC_Overlap_Primitive_XYZ_OS
-
+!
+!PROCEDURE mqc_sphericalGrid
+      subroutine mqc_sphericalGrid(nTheta,nPhi,r,xyz)
+!
+!     This routine is used to build a list of Cartesian coordinates (xyz) of
+!     grid points on the surface of a sphere with radius r. Theta runs from -180
+!     degrees to 180 degrees; phi runs from 0 degrees to 180 degrees.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      integer(kind=int64),intent(in)::nTheta,nPhi
+      real(kind=real64),intent(in)::r
+      real(kind=real64),allocatable,dimension(:,:),intent(out)::xyz
+!
+      integer(kind=int64)::i,j
+      real(kind=real64)::deltaTheta,deltaPhi,theta,phi
+      real(kind=real64)::rad2deg
+!
+!     Do the work.
+!
+      rad2deg = mqc_float(180)/Pi
+      deltaTheta = mqc_float(2)*Pi/nTheta
+      deltaPhi = Pi/nPhi
+      do i = 1,nTheta
+        theta = -Pi+mqc_float(i-1)*deltaTheta
+        do j = 1,nPhi
+          phi = mqc_float(j-1)*deltaPhi
+          write(*,*) theta*rad2deg,phi*rad2deg
+        endDo
+      endDo
+!
+      return
+      end subroutine mqc_sphericalGrid
 !
 !
       end module MQC_Integrals1
