@@ -28,16 +28,18 @@ Include "gbs_mod.f03"
       USE OMP_LIB
       USE gbs_mod
       implicit none
-      integer(kind=int64),parameter::nOMP=12,nIntPlanes=3
+      integer(kind=int64),parameter::nOMP=1
       logical,parameter::extraPrint=.false.
-      integer(kind=int64)::i,j,k,iMODyson,nGridPointsM,nGridPointsTheta
+      integer(kind=int64)::i,j,k,iMODyson,nGridPointsM,  &
+        nGridPointsTheta,nGridPointsPhi,nIntPlanes
       real(kind=real64)::tStart,tEnd,tstart1,tEnd1,stepSizeIntM,  &
-        stepSizeTheta,thetaStart,moVal1,moVal2,kMag,MSquared0,  &
-        MSquared90
+        stepSizeTheta,thetaStart,stepSizePhi,moVal1,moVal2,kMag,  &
+        MSquared0,MSquared90
       real(kind=real64),dimension(3)::cartStart,cartEnd
-      real(kind=real64),dimension(nIntPlanes)::integratedIntensity,  &
+      real(kind=real64),dimension(:),allocatable::integratedIntensity,  &
         betaValsParaPerp,betaValsFit,rSquared
-      real(kind=real64),dimension(3,nIntPlanes)::laserVector,orthogPlaneVector
+      real(kind=real64),dimension(:,:),allocatable::laserVector,  &
+        orthogPlaneVector
       real(kind=real64),dimension(:),allocatable::quadGridTheta,  &
         quadWeightsTheta,quadWeightsM,basisValues,MSquaredList,  &
         quadGridPhi,MSquaredList1
@@ -45,7 +47,7 @@ Include "gbs_mod.f03"
         MSquaredList2
       logical::fail=.false.,found
       character(len=256)::fafName
-      character(len=2),dimension(nIntPlanes)::intPlaneLabels
+      character(len=2),dimension(:),allocatable::intPlaneLabels
       type(mqc_gaussian_unformatted_matrix_file)::faf
       type(mqc_basisset)::basisSet
       type(MQC_Variable)::tmp
@@ -95,40 +97,43 @@ Include "gbs_mod.f03"
       call mqc_version_print(iOut)
 
 !hph+
-      write(iOut,*)
-      write(iOut,*)
-      write(iOut,*)
-      write(iOut,*)' Hrant - testing 1D periodic numerical integration...'
-      nGridPointsTheta = 10
-      stepSizeTheta = mqc_float(2)*pi/(nGridPointsTheta-1)
-      write(iOut,*)'    nGridPointsTheta = ',nGridPointsTheta
-      write(iOut,*)'    stepSizeTheta    = ',stepSizeTheta
-      Allocate(quadGridTheta(nGridPointsTheta),  &
-        quadWeightsTheta(nGridPointsTheta))
-      call setup_quadrature_trapezoid1d(nGridPointsTheta,stepSizeTheta,  &
-        mqc_float(0),quadGridTheta,quadWeightsTheta)
-      call mqc_print(quadGridTheta,iOut,header='grid points')
-      call mqc_print(quadGridTheta/pi,iOut,header='grid points (pi)')
-      call mqc_print(quadWeightsTheta,iOut,header='weights')
-      write(iOut,*)'    sum(weights) in Pi units= ',sum(quadWeightsTheta)/pi
-      Allocate(quadValues(Size(quadGridTheta)))
-      quadValues = sin(quadGridTheta)
-      write(iOut,*)'    Int_0^2Pi(sin(theta))   = ',dot_product(quadValues,quadWeightsTheta)
-      quadValues = cos(quadGridTheta)
-      write(iOut,*)'    Int_0^2Pi(cos(theta))   = ',dot_product(quadValues,quadWeightsTheta)
-      quadValues = cos(quadGridTheta)**2
-      write(iOut,'(A,f12.8,A,f12.8,A)')'     Int_0^2Pi(cos^2(theta)) = ',dot_product(quadValues,quadWeightsTheta),' = ',dot_product(quadValues,quadWeightsTheta)/pi,' Pi'
-      write(iOut,*)
-      write(iOut,*)
-      DeAllocate(quadGridTheta,quadWeightsTheta)
-      goto 999
-
-      write(iOut,*)' Hrant - testing spherical grid set-up code...'
-      call mqc_sphericalGrid(10,5,1.0,quadGridM)
-      write(iOut,*)
-      write(iOut,*)
-      write(iOut,*)
-      goto 999
+!      write(iOut,*)
+!      write(iOut,*)
+!      write(iOut,*)
+!      write(iOut,*)' Hrant - testing 1D periodic numerical integration...'
+!      nGridPointsTheta = 10
+!      stepSizeTheta = mqc_float(2)*pi/(nGridPointsTheta-1)
+!      write(iOut,*)'    nGridPointsTheta = ',nGridPointsTheta
+!      write(iOut,*)'    stepSizeTheta    = ',stepSizeTheta
+!      Allocate(quadGridTheta(nGridPointsTheta),  &
+!        quadWeightsTheta(nGridPointsTheta))
+!      call setup_quadrature_trapezoid1d(nGridPointsTheta,stepSizeTheta,  &
+!        mqc_float(0),quadGridTheta,quadWeightsTheta)
+!      call mqc_print(quadGridTheta,iOut,header='grid points')
+!      call mqc_print(quadGridTheta/pi,iOut,header='grid points (pi)')
+!      call mqc_print(quadWeightsTheta,iOut,header='weights')
+!      write(iOut,*)'    sum(weights) in Pi units= ',sum(quadWeightsTheta)/pi
+!      Allocate(quadValues(Size(quadGridTheta)))
+!      quadValues = sin(quadGridTheta)
+!      write(iOut,*)'    Int_0^2Pi(sin(theta))   = ',dot_product(quadValues,quadWeightsTheta)
+!      quadValues = cos(quadGridTheta)
+!      write(iOut,*)'    Int_0^2Pi(cos(theta))   = ',dot_product(quadValues,quadWeightsTheta)
+!      quadValues = cos(quadGridTheta)**2
+!      write(iOut,'(A,f12.8,A,f12.8,A)')'     Int_0^2Pi(cos^2(theta)) = ',dot_product(quadValues,quadWeightsTheta),' = ',  &
+!       dot_product(quadValues,quadWeightsTheta)/pi,' Pi'
+!      write(iOut,*)
+!      write(iOut,*)
+!      write(iOut,*)
+!      write(iOut,*)
+!      DeAllocate(quadGridTheta,quadWeightsTheta)
+!      goto 999
+!
+!      write(iOut,*)' Hrant - testing spherical grid set-up code...'
+!      call mqc_sphericalGrid(10,5,1.0,quadGridM)
+!      write(iOut,*)
+!      write(iOut,*)
+!      write(iOut,*)
+!      goto 999
 !hph-
 
 !
@@ -185,66 +190,86 @@ Include "gbs_mod.f03"
 !     line.
       call faf%load(fafName)
 !
-!     Set the laser electric field vector and the orthogonal vector defining the
-!     integration plane to be used with each electric field. At present we
-!     hardwire 3 experiments with the electric field vector and planar slice of
-!     photoelectron transition dipole matrices:
+!     Allocate arrays used for the number of integration planes. Then fill the
+!     arrays laserVector and orthogPlaneVector. Currently, there are two methods
+!     in the program to do this. The first method simply sets up 3 integration
+!     plane along the primary axes. The second methods sets up a set of equally
+!     spaced vectors going around a unit sphere.
+!
+      if(.false.) then
+        nIntPlanes = 3
+        Allocate(integratedIntensity(nIntPlanes),  &
+          betaValsParaPerp(nIntPlanes),betaValsFit(nIntPlanes),  &
+          rSquared(nIntPlanes))
+        Allocate(laserVector(3,nIntPlanes),  &
+          orthogPlaneVector(3,nIntPlanes))
+        Allocate(intPlaneLabels(nIntPlanes))
+!
+!       Set the laser electric field vector and the orthogonal vector defining
+!       the integration plane to be used with each electric field. At present we
+!       hardwire 3 experiments with the electric field vector and planar slice
+!       of photoelectron transition dipole matrices:
 !           1. eVector: (1,0,0)  |  plane: yx
 !           2. eVector: (0,1,0)  |  plane: yz
 !           3. eVector: (0,0,1)  |  plane: xz
 !
-      intPlaneLabels(1) = 'xy'
-      laserVector(:,1) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
-      orthogPlaneVector(:,1) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
+        intPlaneLabels(1) = 'xy'
+        laserVector(:,1) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
+        orthogPlaneVector(:,1) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
 !
-      intPlaneLabels(2) = 'yz'
-      laserVector(:,2) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
-      orthogPlaneVector(:,2) = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
+        intPlaneLabels(2) = 'yz'
+        laserVector(:,2) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
+        orthogPlaneVector(:,2) = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
 !
-      intPlaneLabels(3)      = 'zx'
-      laserVector(:,3)       = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
-      orthogPlaneVector(:,3) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
+        intPlaneLabels(3)      = 'zx'
+        laserVector(:,3)       = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
+        orthogPlaneVector(:,3) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
+      else
+        call buildSphereGrid(laserVector,orthogPlaneVector)
+        nIntPlanes = Size(laserVector,2)
+        write(iOut,*)' nIntPlanes = ',nIntPlanes
+        Allocate(integratedIntensity(nIntPlanes),  &
+          betaValsParaPerp(nIntPlanes),betaValsFit(nIntPlanes),  &
+          rSquared(nIntPlanes))
+        Allocate(intPlaneLabels(nIntPlanes))
+        intPlaneLabels = 'a'
+      endIf
 !
 !     Read the basis set and MO coefficients from faf.
 !
       call loadGaussianBasisSet(faf,basisSet)
       call faf%getArray('ALPHA MO COEFFICIENTS',mqcVarOut=tmp)
       moCoeffs = tmp
-
 !
 !     Prepare the integration grid and quadrature weights for the M evaluations.
-!     There is one M per theta.
+!     There are two quadratures coded here: (1) 3D trapezoid quadrature; and (2)
+!     XC quadrature grid saved on the Gaussian FAF.
 !
-      cartStart = [ -6.0,-6.0,-6.0 ]
-      cartEnd = [ 6.0,6.0,6.0 ]
-      stepSizeIntM = (cartEnd(1)-cartStart(1))/mqc_float(nGridPointsM-1)
-      Allocate(quadGridM(3,nGridPointsM**3),quadWeightsM(nGridPointsM**3),  &
-        quadValues(nGridPointsM**3))
-      call CPU_TIME(tStart1)
-      call setup_quadrature_trapezoid3d(nGridPointsM,stepSizeIntM,  &
-        cartStart,quadGridM,quadWeightsM)
-      write(iOut,2000) 'M quadrature',nGridPointsM**3,stepSizeIntM
-      call CPU_TIME(tEnd1)
-      write(iOut,8998) '3D grid setup',tEnd1-tStart1
-      flush(iOut)
-!hph+
-!
-!     Test code to load Gaussian's quadrature grid points and weights from the
-!     FAF.
-!
-      DeAllocate(quadWeightsM,quadGridM)
-      write(iOut,*)
-      write(iOut,*)' Hrant - calling MQC get_quad routine...'
-      call MQC_Gaussian_FAF_Get_3DQuadratureGrid(faf,  &
-        quadWeightsM,quadGridM,found)
-      write(iOut,*)' Hrant - back from MQC get_quad routine...'
-      write(iOut,*)'         found               = ',found
-      write(iOut,*)'         Alloc(quadWeightsM) = ',Allocated(quadWeightsM)
-      write(iOut,*)'         Alloc(quadGridM)    = ',Allocated(quadGridM)
-      write(iOut,*)'         No. of grid points  = ',SIZE(quadWeightsM)
-      write(iOut,*)
-!hph-
-
+      if(.false.) then
+        cartStart = [ -6.0,-6.0,-6.0 ]
+        cartEnd = [ 6.0,6.0,6.0 ]
+        stepSizeIntM = (cartEnd(1)-cartStart(1))/mqc_float(nGridPointsM-1)
+        Allocate(quadGridM(3,nGridPointsM**3),quadWeightsM(nGridPointsM**3),  &
+          quadValues(nGridPointsM**3))
+        call CPU_TIME(tStart1)
+        call setup_quadrature_trapezoid3d(nGridPointsM,stepSizeIntM,  &
+          cartStart,quadGridM,quadWeightsM)
+        write(iOut,2000) 'M quadrature',nGridPointsM**3,stepSizeIntM
+        call CPU_TIME(tEnd1)
+        write(iOut,8998) '3D grid setup',tEnd1-tStart1
+        flush(iOut)
+      else
+        write(iOut,*)
+        write(iOut,*)' Hrant - calling MQC get_quad routine...'
+        call MQC_Gaussian_FAF_Get_3DQuadratureGrid(faf,  &
+          quadWeightsM,quadGridM,found)
+        write(iOut,*)' Hrant - back from MQC get_quad routine...'
+        write(iOut,*)'         found               = ',found
+        write(iOut,*)'         Alloc(quadWeightsM) = ',Allocated(quadWeightsM)
+        write(iOut,*)'         Alloc(quadGridM)    = ',Allocated(quadGridM)
+        write(iOut,*)'         No. of grid points  = ',SIZE(quadWeightsM)
+        write(iOut,*)
+      endIf
 !
 !     Fill in the grid of I(theta) points.
 !
@@ -259,18 +284,19 @@ Include "gbs_mod.f03"
       call mqc_print(quadGridTheta,iOut,header='Theta Grid')
       call mqc_print(quadGridTheta/Pi,iOut,header='Theta Grid/Pi')
       flush(iOut)
-
-!hph+
-      Allocate(quadGridPhi(2*nGridPointsTheta-2))
+      nGridPointsPhi = 2*nGridPointsTheta-1
+      stepSizePhi = mqc_float(2)*Pi/mqc_float(nGridPointsPhi-1)
+      Allocate(quadGridPhi(nGridPointsPhi))
       quadGridPhi(1) = mqc_float(0)
-      do i = 2,2*nGridPointsTheta-2
+      do i = 2,nGridPointsPhi
         quadGridPhi(i) = quadGridPhi(i-1) + stepSizeTheta
       endDo
       call mqc_print(quadGridPhi,iOut,header='phi grid')
       call mqc_print(quadGridPhi/Pi,iOut,header='phi grid/Pi')
-!      goto 999
-!hph-
-
+      write(iOut,*)
+      write(iOut,*)' Hrant - stepSizeTheta = ',stepSizeTheta
+      write(iOut,*)'         stepSizePhi   = ',stepSizePhi
+      write(iOut,*)
 !
 !     Memory check...
 !
@@ -291,6 +317,8 @@ Include "gbs_mod.f03"
 !     Integrate the Dyson/plane wave matrix elements as a function of theta.
 !
       do i = 1,nIntPlanes
+        write(iOut,*)
+        write(iOut,*)' Hrant - i = ',i
         write(iOut,1100) laserVector(:,i)
         call CPU_TIME(tStart1)
         MSquared0 = dysonPlaneWaveMatrixElementSquared(mqc_float(0),kMag,  &
@@ -306,8 +334,6 @@ Include "gbs_mod.f03"
         write(iOut,8998) 'MSquared90',tEnd1-tStart1
         call CPU_TIME(tStart1)
         flush(iOut)
-
-!hph+
         MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
           quadGridTheta,kMag,laserVector(:,i),orthogPlaneVector(:,i),  &
           moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
@@ -317,14 +343,11 @@ Include "gbs_mod.f03"
           quadGridM,quadWeightsM)
         call mqc_print(MSquaredList,iOut,header='MSquaredList',blank_at_top=.true.)
         call mqc_print(MSquaredList2,iOut,header='MSquaredList2',blank_at_top=.true.)
-        do j = 1,2*nGridPointsTheta-2
+        do j = 1,nGridPointsPhi
           call betaLeastSquares(MSquaredList2(j,:),quadGridTheta,  &
             tmpBeta,tmpR2)
           write(iOut,*) quadGridPhi(j)/Pi,tmpBeta,tmpR2
         endDo
-        write(iOut,*)
-!hph-
-
         call CPU_TIME(tEnd1)
         write(iOut,8998) 'MSquared(theta) list',tEnd1-tStart1
         flush(iOut)
@@ -333,6 +356,9 @@ Include "gbs_mod.f03"
 !
         call betaLeastSquares(MSquaredList,quadGridTheta,betaValsFit(i),  &
           rSquared(i))
+        write(iOut,*)' Hrant - Saving betaValsFit(i) and rSquared(i): ',  &
+          betaValsFit(i),rSquared(i)
+        write(iOut,*)
 !
 !       Print the intensity data table.
 !
@@ -350,13 +376,11 @@ Include "gbs_mod.f03"
         write(iOut,3100) MSquared0,MSquared90,  &
           betaParaPerp(MSquared0,MSquared90)
         flush(iOut)
-
-!hph+
         if(.not.Allocated(MSquaredList1))  &
           Allocate(MSquaredList1(Size(MSquaredList)))
         MSquaredList1 = mqc_float(0)
         do j = 1,nGridPointsTheta
-          do k = 1,2*nGridPointsTheta-2
+          do k = 1,nGridPointsPhi
             MSquaredList1(j) = MSquaredList1(j)+MSquaredList2(k,j)*stepSizeTheta
           endDo
         endDo
@@ -364,8 +388,6 @@ Include "gbs_mod.f03"
         call betaLeastSquares(MSquaredList1,quadGridTheta,tmpBeta,tmpR2)
         write(iOut,*)' beta,R**2:',tmpBeta,tmpR2
         write(iOut,*)
-!hph-
-
       endDo
 !
 !     Print out the integrated planar intensity for each laser vector. Then

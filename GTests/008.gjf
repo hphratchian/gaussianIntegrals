@@ -1,5 +1,6 @@
 %chk=008
 #p test gfinput sto-3g pop=full output=faf
+int(preComputeXCGridPoints)
 
 test
 

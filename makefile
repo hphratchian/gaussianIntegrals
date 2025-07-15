@@ -23,9 +23,9 @@
 #
 FCPATH := $(FC)
 FC := $(notdir $(FCPATH))
-FC          = nvfortran
+#FC          = nvfortran
 #FC         ?= gfortran
-#FC          = gfortran
+FC          = gfortran
 MQCDir      = $(mqcinstall)
 LIBSALGEBRA = -llapack -lblas
 USEOMP      = yes

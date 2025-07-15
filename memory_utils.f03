@@ -11,6 +11,7 @@
 !
       interface
         function c_getpid() bind(C, name="getpid")
+          use iso_c_binding, only: c_int
           integer(c_int) :: c_getpid
         end function c_getpid
       end interface

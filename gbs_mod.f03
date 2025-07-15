@@ -282,7 +282,7 @@ include "memory_utils.f03"
       real(kind=real64),dimension(:),allocatable::MSquared
 !
       integer(kind=int64)::i,j,nTheta,nGrid
-      real(kind=real64)::kVectorA,kVectorB,w,dysonVal,epsilonDotMu,thetaTest
+      real(kind=real64)::w,dysonVal,epsilonDotMu,thetaTest
       real(kind=real64),dimension(:),allocatable::aoBasisValues,dysonNormTest
       real(kind=real64),dimension(:),allocatable::MReal,MImag
       real(kind=real64),dimension(3)::gridPoint,kVector
@@ -324,10 +324,16 @@ include "memory_utils.f03"
           kVector = cos(thetaList(j))*photonVector+  &
             sin(thetaList(j))*orthogPlaneVector
           thetaTest = vectorAngle(kVector,photonVector)
-!hph          write(iOut,'(1x,"theta=",f8.4," | thetaTest=",f8.4)') thetaList(j),thetaTest
-          if(abs(thetaList(j)-thetaTest).gt.0.001)  &
+          if(abs(thetaList(j)-thetaTest).gt.0.001) then
             write(iOut,'(4x,"PROBLEM  ",f6.3,5(",",f6.3))') kVector,photonVector
-!hph write(iOut,'(A,5(3x,f10.3))')' angle = ',vectorAngle(kVector,photonVector),thetaList(j),kVectorA,kVectorB,dot_product(kVector,photonVector)
+            call mqc_print(photonVector,iOut,header='photonVector')
+            call mqc_print(orthogPlaneVector,iOut,header='orthogPlaneVector')
+            call mqc_print(kVector,iOut,header='kVector')
+            write(iOut,'(1x,"theta=",f8.4," | thetaTest=",f8.4)') thetaList(j),thetaTest
+            write(iOut,'(A,3(3x,f10.3))')' angle = ',vectorAngle(kVector,photonVector),  &
+              thetaList(j),dot_product(kVector,photonVector)
+            call mqc_error('STOP: ERROR!')
+          endIf
           w = kMag * dot_product(kVector, gridPoint)
           MReal(j) = MReal(j) + cos(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
           MImag(j) = MImag(j) - sin(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
@@ -393,7 +399,7 @@ include "memory_utils.f03"
 !     to orthogPlaneVector and the electric field vector. Vectors
 !     orthogPlaneVector and orthog2PlaneVector are used to construct the plane
 !     (with the photon electric field vector) of integration for M at a given
-!     phi (which is given relative to orthogPlaneVector..
+!     phi (which is given relative to orthogPlaneVector).
 !
       if(dot_product(photonVector,photonVector).gt.MQC_Small)  &
         call mqc_normalizeVector(photonVector)
@@ -404,13 +410,13 @@ include "memory_utils.f03"
 !     Loop through the quadrature points to evaluate integrand values.
 !
       allocate(aoBasisValues(SIZE(dysonCoeffs)))
-      do i = 1, nGrid
+      do i = 1,nGrid
         gridPoint = quadraturePoints(:,i)
-        call basisSetValuesList1(aoBasisSet, gridPoint, aoBasisValues)
-        dysonVal = dot_product(dysonCoeffs, aoBasisValues)
+        call basisSetValuesList1(aoBasisSet,gridPoint,aoBasisValues)
+        dysonVal = dot_product(dysonCoeffs,aoBasisValues)
         dysonNormTest(i) = dysonVal * dysonVal
-        epsilonDotMu = dot_product(photonVector, gridPoint)
-        do j = 1, nTheta
+        epsilonDotMu = dot_product(photonVector,gridPoint)
+        do j = 1,nTheta
           do k = 1,nPhi
             planeVector = cos(phiList(k))*orthogPlaneVector+  &
               sin(phiList(k))*orthog2PlaneVector
@@ -419,7 +425,7 @@ include "memory_utils.f03"
             thetaTest = vectorAngle(kVector,photonVector)
             if(abs(thetaList(j)-thetaTest).gt.0.001)  &
               write(iOut,'(4x,"PROBLEM  ",f6.3,5(",",f6.3))') kVector,photonVector
-            w = kMag * dot_product(kVector, gridPoint)
+            w = kMag * dot_product(kVector,gridPoint)
             MReal(k,j) = MReal(k,j) + cos(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
             MImag(k,j) = MImag(k,j) - sin(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
           endDo
@@ -609,6 +615,97 @@ include "memory_utils.f03"
       DeAllocate(x)
       return
       end subroutine betaLeastSquares
+!
+!PROCEDURE buildSphereGrid
+      subroutine buildSphereGrid(xyz,orthogVector)
+!
+!     This routine builds a set of Cartesian coordinates on the surface of a
+!     unit sphere. The points are evenly spaced in theta and phi. The output
+!     from this routine is array xyz, which is allocatable. The output array
+!     orthogVector gives the projection onto the xy plance of each point. At the
+!     poles, orthogVector is set to the positive x-direction.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      real(kind=real64),dimension(:,:),allocatable::xyz,orthogVector
+      integer(kind=int64)::i,j,nThetaPoints,nPhiPoints,ixyz
+      real(kind=real64)::thetaStep,phiStep,theta,phi,x,y,z
+!
+ 1000 format(1x,i4,': theta,phi (pi)=',f5.2,',',f5.2,' | x,y,z=',f8.4,',',f8.4,',',f8.4)
+!
+!     Start by setting nThetaPoints and  nPhiPoints, and figuring out thetaStep
+!     and phiStep. Then, allocate xyz.
+!
+      nThetaPoints = 5
+      nPhiPoints = 8
+      thetaStep = Pi/mqc_float(nThetaPoints-1)
+      phiStep = mqc_float(2)*Pi/mqc_float(nPhiPoints)
+      write(*,*)' thetaStep = ',thetaStep
+      write(*,*)'           = ',thetaStep/Pi
+      write(*,*)
+      write(*,*)' phiStep   = ',phiStep
+      write(*,*)'           = ',phiStep/Pi
+      write(*,*)
+!
+!     Loop over theta and phi to build the array xyz.
+!
+      Allocate(xyz(3,(nThetaPoints-2)*nPhiPoints+2),  &
+        orthogVector(3,(nThetaPoints-2)*nPhiPoints+2))
+      theta = 0
+      ixyz = 1
+      do i = 1,nThetaPoints
+        theta = mqc_float(i-1)*thetaStep
+        if(i.eq.1) then
+          phi = mqc_float(0)
+          x = sin(theta)*cos(phi)
+          y = sin(theta)*sin(phi)
+          z = cos(theta)
+          xyz(1,ixyz) = x
+          xyz(2,ixyz) = y
+          xyz(3,ixyz) = z
+          orthogVector(1,ixyz) = mqc_float(1)
+          orthogVector(2,ixyz) = mqc_float(0)
+          orthogVector(3,ixyz) = mqc_float(0)
+          write(iOut,1000) ixyz,theta/pi,phi/pi,xyz(:,ixyz)
+          ixyz = ixyz+1
+        elseIf(i.eq.nThetaPoints) then
+          phi = mqc_float(0)
+          x = sin(theta)*cos(phi)
+          y = sin(theta)*sin(phi)
+          z = cos(theta)
+          xyz(1,ixyz) = x
+          xyz(2,ixyz) = y
+          xyz(3,ixyz) = z
+          orthogVector(1,ixyz) = mqc_float(-1)
+          orthogVector(2,ixyz) = mqc_float(0)
+          orthogVector(3,ixyz) = mqc_float(0)
+          write(iOut,1000) ixyz,theta/pi,phi/pi,xyz(:,ixyz)
+          ixyz = ixyz+1
+        else
+          do j = 1,nPhiPoints
+            phi = mqc_float(j-1)*phiStep
+            x = sin(theta)*cos(phi)
+            y = sin(theta)*sin(phi)
+            z = cos(theta)
+            xyz(1,ixyz) = x
+            xyz(2,ixyz) = y
+            xyz(3,ixyz) = z
+            x = sin(theta+0.5*pi)*cos(phi)
+            y = sin(theta+0.5*pi)*sin(phi)
+            z = cos(theta+0.5*pi)
+            orthogVector(1,ixyz) = x
+            orthogVector(2,ixyz) = y
+            orthogVector(3,ixyz) = z
+            write(iOut,1000) ixyz,theta/pi,phi/pi,xyz(:,ixyz)
+            ixyz = ixyz+1
+          endDo
+        endIf
+      endDo
+!
+      return
+      end subroutine buildSphereGrid
 
 
       end module gbs_mod
