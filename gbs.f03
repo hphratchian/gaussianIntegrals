@@ -1,4 +1,3 @@
-Include "gbs_mod.f03"
       program gbs
 !
 !     This program tests the MQC_Integrals module by using a local version named

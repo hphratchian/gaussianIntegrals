@@ -1,4 +1,3 @@
-Include "gbs_mod.f03"
       program pad
 !
 !     This test program evaluates the photoelectron angular distribution,
@@ -25,8 +24,7 @@ Include "gbs_mod.f03"
 !     University of California, Merced
 !
 !
-      USE OMP_LIB
-      USE gbs_mod
+      use pad_mod
       implicit none
       integer(kind=int64),parameter::nOMP=1
       logical,parameter::extraPrint=.false.

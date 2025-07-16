@@ -39,7 +39,8 @@ ifeq ($(FC),gfortran)
   ifeq ($(USEOMP),yes)
     OMPFLAGS = -fopenmp
   endif
-  LIBS    =  $(LIBSALGEBRA) $(MQCLIB)/libmqc.a -L/opt/intel/oneapi/mkl/2022.2.0/lib/intel64
+  LIBS    =  $(LIBSALGEBRA) $(MQCLIB)/libmqc.a
+#hph  LIBS    =  $(LIBSALGEBRA) $(MQCLIB)/libmqc.a -L/opt/intel/oneapi/mkl/2022.2.0/lib/intel64
   FCFLAGS = -std=f2008 -fdefault-real-8 -fdefault-integer-8 $(OMPFLAGS)
 else ifeq ($(FC),nvfortran)
   MQCMODS      = $(MQCDir)/NVidia/mod
@@ -59,6 +60,9 @@ all: gbs.exe pad.exe basisCounting.exe
 #
 # Generic rules for building module (*.mod) and object (*.o) files.
 #
+%.mod: %.f03
+	$(FC) $(FCFLAGS) -I$(MQCMODS) -c $*.f03
+
 %.mod: %.F03
 	$(FC) $(FCFLAGS) -I$(MQCMODS) -c $*.F03
 
@@ -68,8 +72,8 @@ all: gbs.exe pad.exe basisCounting.exe
 # Generic rule for building general executable program (*.exe) from a standard
 # f03 source (*.f03) file.
 #
-%.exe: %.f03 mqc_integrals1.mod gbs_mod.f03 $(MQCLIB)/libmqc.a
-	$(FC) $(LIBS) $(Prof) -I$(MQCMODS) $(FCFLAGS) -o $*.exe $*.f03 mqc_integrals1.o $(MQCLIB)/libmqc.a
+%.exe: %.f03 pad_mod.mod gbs_mod.mod mqc_integrals1.mod memory_utils.mod $(MQCLIB)/libmqc.a
+	$(FC) $(Prof) -I$(MQCMODS) $(FCFLAGS) -o $*.exe $*.f03 pad_mod.o gbs_mod.o mqc_integrals1.o memory_utils.o $(LIBS)
 #
 # Clean rule for removing any object, module, or executable files in the working directory.
 #
