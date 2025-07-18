@@ -16,6 +16,62 @@
       CONTAINS
 !
 !
+!PROCEDURE padCommandLine
+      subroutine padCommandLine(iMODyson,nGridPointsTheta,nGridPointsM,  &
+        kMag,fafName)
+!
+!     This routine processes the command line arguments and fills key variables
+!     and option flags.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      integer(kind=int64)::iMODyson,nGridPointsTheta,nGridPointsM
+      real(kind=real64)::kMag
+      character(len=256)::fafName
+!
+      integer(kind=int64)::i,nCommandLineArgs
+!
+!     Walk through the command line arguments to fill required input parameters
+!     and other option flags.
+!
+      nCommandLineArgs = command_argument_count()
+      if(nCommandLineArgs.lt.1.or.nCommandLineArgs.gt.5)  &
+        call mqc_error('PAD expects 1-5 command line arguments.')
+      if(.true.) then
+        call get_command_argument(1,fafName)
+        if(command_argument_count().ge.2) then
+          call mqc_get_command_argument_integer(2,iMODyson)
+        else
+          iMODyson = 1
+        endIf
+        if(command_argument_count().ge.3) then
+          call mqc_get_command_argument_real(3,kMag)
+        else
+          kMag = mqc_float(1)/mqc_float(500)
+        endIf
+        if(command_argument_count().ge.4) then
+          call mqc_get_command_argument_integer(4,nGridPointsTheta)
+        else
+          nGridPointsTheta = 15
+          nGridPointsTheta = 5
+        endIf
+        if(command_argument_count().ge.5) then
+          call mqc_get_command_argument_integer(5,nGridPointsM)
+        else
+          nGridPointsM = 101
+        endIf
+      else
+        do i = 1,nCommandLineArgs
+
+        endDo
+      endIf
+
+!
+      return
+      end subroutine padCommandLine
+
 !PROCEDURE betaParaPerp
       function betaParaPerp(IPara,IPerp) result(beta)
 !

@@ -56,7 +56,7 @@ endif
 #
 # The 'all' rule.
 #
-all: gbs.exe pad.exe basisCounting.exe
+all: basisCounting.exe gbs.exe pad.exe
 #
 # Generic rules for building module (*.mod) and object (*.o) files.
 #

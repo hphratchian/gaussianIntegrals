@@ -469,8 +469,6 @@
       if(MEMChecks) call print_memory_usage(iOut,'moInnerProductNumericalIntegration before OMP loop.')
 !$omp parallel do private(i,aoBasisValues,localValue) shared(valuesGrid) schedule(dynamic)
       do i = 1,SIZE(quadratureWeights)
-!        aoBasisValues = basisSetValuesList(aoBasisSet,  &
-!          quadraturePoints(:,i))
         call basisSetValuesList1(aoBasisSet,  &
           quadraturePoints(:,i),aoBasisValues)
         localValue = dot_product(moCoeffsBra,aoBasisValues)
@@ -482,7 +480,6 @@
         valuesGrid(i) = localValue
       endDo
 !$omp end parallel do
-      minValue = MinVal(valuesGrid)
       integralValue = dot_product(quadratureWeights,valuesGrid)
       if(abs(integralValue).lt.mqc_small) integralValue = mqc_float(0)
       return

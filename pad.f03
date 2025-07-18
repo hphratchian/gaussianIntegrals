@@ -139,53 +139,14 @@
 !
       if(MEMChecks) call print_memory_usage(iOut,'At top of PAD.')
 !
-!     Read the FAF name and MO number (the one we use for the Dyson orbtial)
-!     from the command line. If the MO number isn't included, we set it to zero
-!     here and later default it to the HOMO.
+!     Call padCommandLine to parse the command line and fill input and other job
+!     option flags.
 !
-      if(command_argument_count().lt.1.or.  &
-        command_argument_count().gt.5)  &
-        call mqc_error('PAD expects 1-5 command line arguments.')
-      call get_command_argument(1,fafName)
-      if(command_argument_count().ge.2) then
-        call mqc_get_command_argument_integer(2,iMODyson)
-      else
-        iMODyson = 1
-      endIf
-      if(command_argument_count().ge.3) then
-        call mqc_get_command_argument_real(3,kMag)
-      else
-        kMag = mqc_float(1)/mqc_float(500)
-      endIf
-      if(command_argument_count().ge.4) then
-        call mqc_get_command_argument_integer(4,nGridPointsTheta)
-      else
-        nGridPointsTheta = 15
-        nGridPointsTheta = 5
-      endIf
-      if(command_argument_count().ge.5) then
-        call mqc_get_command_argument_integer(5,nGridPointsM)
-      else
-        nGridPointsM = 101
-      endIf
-
-
-!hph+
-!!
-!!     Test of cross product function.
-!!
-!      v1 = [ -1.0,0.0,0.0 ]
-!      v2 = [ 0.0,1.0,0.0 ]
-!      v3 = mqc_crossProduct3D_real(v1,v2)
-!      call mqc_print(v1,iOut,header='v1')
-!      call mqc_print(v2,iOut,header='v2')
-!      call mqc_print(v3,iOut,header='v3')
-!      goto 999
-!hph-
-
+      call padCommandLine(iMODyson,nGridPointsTheta,nGridPointsM,  &
+        kMag,fafName)
 !
-!     Load the FAF and set the MO number if it wasn't provided on the command
-!     line.
+!     Load the FAF.
+!
       call faf%load(fafName)
 !
 !     Allocate arrays used for the number of integration planes. Then fill the
