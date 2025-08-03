@@ -72,7 +72,7 @@ all: basisCounting.exe gbs.exe pad.exe
 # Generic rule for building general executable program (*.exe) from a standard
 # f03 source (*.f03) file.
 #
-%.exe: %.f03 pad_mod.mod gbs_mod.mod mqc_integrals1.mod memory_utils.mod $(MQCLIB)/libmqc.a
+%.exe: %.f03 memory_utils.mod mqc_integrals1.mod gbs_mod.mod pad_mod.mod $(MQCLIB)/libmqc.a
 	$(FC) $(Prof) -I$(MQCMODS) $(FCFLAGS) -o $*.exe $*.f03 pad_mod.o gbs_mod.o mqc_integrals1.o memory_utils.o $(LIBS)
 #
 # Clean rule for removing any object, module, or executable files in the working directory.

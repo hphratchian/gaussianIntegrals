@@ -238,5 +238,69 @@
       return
       end subroutine buildSphereGrid
 
+!
+!PROCEDURE compute_legendre
+      subroutine compute_legendre(l,m,x,Plm)
+!
+!     Evaluates the associated Legendre polynomial P_l^m(x) using upward
+!     recursion from P_m^m(x).
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      integer(kind=int64),intent(in)::l,m
+      real(kind=real64),intent(in)::x
+      real(kind=real64),intent(out)::Plm
+!
+      integer(kind=int64)::i,abs_m
+      real(kind=real64)::pmm,pmmp1,pll,somx2
+!
+!     Check for valid input range.
+!
+      if(l.lt.0.or.abs(m).gt.l) call mqc_error('compute_legendre: Invalid l or m.')
+!
+!     Compute P_m^m(x)
+!
+      abs_m = abs(m)
+      somx2 = sqrt(max(0.0_real64,1.0_real64 - x*x))
+      pmm = mqc_float(1)
+      if(abs_m.gt.0) then
+        pmm = (-mqc_float(1))**abs_m
+        do i=1,abs_m
+          pmm = pmm*somx2*mqc_float(2*i-1)
+        endDo
+      endIf
+      if(l.eq.abs_m) then
+        Plm = pmm
+        return
+      endIf
+!
+!     Compute P_{m+1}^m(x)
+!
+      pmmp1 = x*pmm*mqc_float(2*abs_m+1)
+      if(l.eq.abs_m + 1) then
+        Plm = pmmp1
+        return
+      endIf
+!
+!     Upward recurrence for l > m + 1
+!
+      do i=abs_m+2,l
+        pll = ((2*i-1)*x*pmmp1-(i+abs_m-1)*pmm)/(i-abs_m)
+        pmm = pmmp1
+        pmmp1 = pll
+      endDo
+      Plm = pll
+!
+!     Apply Condon-Shortley phase if m < 0
+!
+      if(m.lt.0) then
+        Plm = (-mqc_float(1))**abs_m * Plm
+      endIf
+!
+      return
+      end subroutine compute_legendre
+
 
       end module pad_mod
