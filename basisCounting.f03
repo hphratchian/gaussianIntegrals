@@ -14,8 +14,8 @@
       USE iso_fortran_env
       USE MQC_Integrals
       implicit none
-      integer(kind=real64)::nArguments
-      integer(kind=real64)::lInput,nCartesians
+      integer(kind=int64),parameter::iOut=6
+      integer(kind=int64)::nArguments,lInput,nCartesians
       character(len=256)::commandLineArg
       logical::fail=.false.
 !

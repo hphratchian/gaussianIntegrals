@@ -402,5 +402,168 @@
       return
       end function sph_bessel_j
 
+!
+!PROCEDURE dysonMatrixElement1Angle
+      subroutine dysonMatrixElement1Angle(iPEType,lMax,theta,kMag,       &
+        photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,           &
+        quadraturePoints,quadratureWeights,MSquared,lWeights)
+!
+!     Computes the Dyson transition dipole squared at angle theta using
+!     the specified photoelectron representation. If iPEType==2, this
+!     also computes the normalized partial wave ℓ contributions.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+!
+!     Arguments
+!
+      integer(kind=int64),intent(in)::iPEType,lMax
+      real(kind=real64),intent(in)::theta,kMag
+      real(kind=real64),dimension(3),intent(inOut)::photonVector,       &
+        orthogPlaneVector
+      real(kind=real64),dimension(:),intent(in)::dysonCoeffs,           &
+        quadratureWeights
+      real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
+      real(kind=real64),intent(out)::MSquared
+      real(kind=real64),dimension(0:),intent(out)::lWeights
+      class(mqc_basisSet),intent(in)::aoBasisSet
+!
+!     Local variables
+!
+      integer(kind=int64)::i,l,m,mu
+      real(kind=real64)::rVec(3),r,thetaVal,phiVal,w
+      real(kind=real64)::j_l,dysonVal,dysonNorm
+      real(kind=real64)::epsilonDotMu
+      complex(kind=real64)::Ylm,psiF,muVal
+      complex(kind=real64)::dipX,dipY,dipZ
+      complex(kind=real64),dimension(0:lMax,-lMax:lMax,3)::cLM
+      real(kind=real64),dimension(0:lMax)::W_l
+      real(kind=real64),dimension(:),allocatable::aoBasisValues,        &
+        MValuesReal,MValuesImaginary,dysonNormTest
+      real(kind=real64),dimension(3)::kVector
+      complex(kind=real64)::iunit
+!
+      iunit = (0.0_real64,1.0_real64)
+      call mqc_normalizeVector(photonVector)
+      call mqc_normalizeVector(orthogPlaneVector)
+      kVector = cos(theta)*photonVector + sin(theta)*orthogPlaneVector
+      kVector = kMag*kVector
+!
+      Allocate(MValuesReal(SIZE(quadratureWeights)),  &
+        MValuesImaginary(SIZE(quadratureWeights)),    &
+        dysonNormTest(SIZE(quadratureWeights)))
+!
+      cLM = (0.0_real64,0.0_real64)
+!
+!$omp parallel do private(i, aoBasisValues, rVec, r, dysonVal, thetaVal, phiVal, &
+!$omp& l, m, mu, j_l, Ylm, muVal, w, epsilonDotMu, psiF)                          &
+!$omp& shared(MValuesReal, MValuesImaginary, dysonNormTest, cLM) schedule(dynamic)
+      do i = 1,SIZE(quadratureWeights)
+        rVec = quadraturePoints(:,i)
+        r = sqrt(dot_product(rVec,rVec))
+        call basisSetValuesList1(aoBasisSet, rVec, aoBasisValues)
+        dysonVal = dot_product(dysonCoeffs, aoBasisValues)
+        dysonNormTest(i) = dysonVal*dysonVal
+!
+        select case(iPEType)
+!
+        case(1)
+          w = dot_product(kVector, rVec)
+          epsilonDotMu = dot_product(photonVector, rVec)
+          MValuesReal(i) = cos(w)*epsilonDotMu*dysonVal
+          MValuesImaginary(i) = -sin(w)*epsilonDotMu*dysonVal
+!
+        case(2)
+          if(r.gt.1.0d-10) then
+            thetaVal = acos(rVec(3)/r)
+            phiVal = atan2(rVec(2),rVec(1))
+          else
+            thetaVal = 0.0_real64
+            phiVal = 0.0_real64
+          endIf
+!
+!         Loop over l and m to build c_{lm}^{(mu)} terms
+!
+          do l=0,lMax
+            j_l = sph_bessel_j(l,kMag*r)
+            do m=-l,l
+              Ylm = Ylm_complex(l,m,thetaVal,phiVal)
+              do mu=1,3
+                epsilonDotMu = rVec(mu)
+                muVal = j_l * Ylm * epsilonDotMu * dysonVal
+!$omp atomic
+                cLM(l,m,mu) = cLM(l,m,mu) + quadratureWeights(i)*muVal
+              endDo
+            endDo
+          endDo
+!
+        case default
+          write(iOut,'(A)') 'ERROR: Invalid iPEType in dysonMatrixElement1Angle.'
+          stop
+        end select
+      end do
+!$omp end parallel do
+!
+      dysonNorm = dot_product(quadratureWeights,dysonNormTest)
+!
+      if(iPEType.eq.2) then
+!
+!       Sum over m and mu to get W_l
+!
+        do l=0,lMax
+          W_l(l) = 0.0_real64
+          do m=-l,l
+            do mu=1,3
+              W_l(l) = W_l(l) + abs(cLM(l,m,mu))**2
+            endDo
+          endDo
+        endDo
+!
+!       Normalize
+!
+        if(sum(W_l).gt.1.0d-12) then
+          lWeights(0:lMax) = W_l / sum(W_l)
+        else
+          lWeights(0:lMax) = 0.0_real64
+        endIf
+!
+        MValuesReal = 0.0_real64
+        MValuesImaginary = 0.0_real64
+        do i=1,SIZE(quadratureWeights)
+          MValuesReal(i) = 0.0_real64
+          MValuesImaginary(i) = 0.0_real64
+        endDo
+!
+!       Reconstruct dipole projection from cLM
+!
+        dipX = (0.0_real64,0.0_real64)
+        dipY = (0.0_real64,0.0_real64)
+        dipZ = (0.0_real64,0.0_real64)
+        do l=0,lMax
+          do m=-l,l
+            dipX = dipX + cLM(l,m,1)
+            dipY = dipY + cLM(l,m,2)
+            dipZ = dipZ + cLM(l,m,3)
+          endDo
+        endDo
+!
+        MSquared = abs( dipX*photonVector(1) +  &
+                        dipY*photonVector(2) +  &
+                        dipZ*photonVector(3) )**2
+!
+      else
+        MSquared = dot_product(quadratureWeights,MValuesReal)**2 +  &
+                   dot_product(quadratureWeights,MValuesImaginary)**2
+        lWeights(0) = 1.0_real64
+        do l=1,lMax
+          lWeights(l) = 0.0_real64
+        endDo
+      endIf
+!
+      return
+      end subroutine dysonMatrixElement1Angle
+
 
       end module pad_mod

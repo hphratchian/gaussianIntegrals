@@ -26,14 +26,15 @@
 !
       use pad_mod
       implicit none
-      integer(kind=int64),parameter::nOMP=1
+      integer(kind=int64),parameter::nOMP=1,lMax=2
       logical,parameter::extraPrint=.false.
       integer(kind=int64)::i,j,k,iMODyson,nGridPointsM,  &
-        nGridPointsTheta,nGridPointsPhi,nIntPlanes
+        nGridPointsTheta,nGridPointsPhi,nIntPlanes,iPeType
       real(kind=real64)::tStart,tEnd,tstart1,tEnd1,stepSizeIntM,  &
         stepSizeTheta,thetaStart,stepSizePhi,moVal1,moVal2,kMag,  &
         MSquared0,MSquared90
       real(kind=real64),dimension(3)::cartStart,cartEnd
+      real(kind=real64),dimension(0:lMax)::lWeights0,lWeights90
       real(kind=real64),dimension(:),allocatable::integratedIntensity,  &
         betaValsParaPerp,betaValsFit,rSquared
       real(kind=real64),dimension(:,:),allocatable::laserVector,  &
@@ -275,20 +276,46 @@
 !
 !     Integrate the Dyson/plane wave matrix elements as a function of theta.
 !
+
+!hph+
+      iPeType = 1
+!hph-
+
       do i = 1,nIntPlanes
         write(iOut,*)
         write(iOut,*)' Hrant - i = ',i
         write(iOut,1100) laserVector(:,i)
         call CPU_TIME(tStart1)
+
+!hph+
+        if(.false.) then
         MSquared0 = dysonPlaneWaveMatrixElementSquared(mqc_float(0),kMag,  &
           laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
           basisSet,quadGridM,quadWeightsM)
+        else
+        call dysonMatrixElement1Angle(iPeType,lMax,mqc_float(0),kMag,  &
+          laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
+          basisSet,quadGridM,quadWeightsM,MSquared0,lWeights0)
+        endIf
+        write(iOut,*)' Hrant - MSquared0 = ',mSquared0
+!hph-
+
         call CPU_TIME(tEnd1)
         write(iOut,8998) 'MSquared0 ',tEnd1-tStart1
         call CPU_TIME(tStart1)
+
+!hph+
+        if(.true.) then
         MSquared90 = dysonPlaneWaveMatrixElementSquared(Pi/mqc_float(2),  &
           kMag,laserVector(:,i),orthogPlaneVector(:,i),  &
           moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+        else
+        call dysonMatrixElement1Angle(iPeType,lMax,Pi/mqc_float(2),kMag,  &
+          laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
+          basisSet,quadGridM,quadWeightsM,MSquared90,lWeights90)
+        endIf
+!hph-
+
         call CPU_TIME(tEnd1)
         write(iOut,8998) 'MSquared90',tEnd1-tStart1
         call CPU_TIME(tStart1)
