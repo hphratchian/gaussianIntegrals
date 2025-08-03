@@ -302,5 +302,105 @@
       return
       end subroutine compute_legendre
 
+!
+!PROCEDURE Ylm_complex
+      function Ylm_complex(l,m,theta,phi) result(Y)
+!
+!     Evaluates the complex spherical harmonic Y_l^m(theta,phi) using associated
+!     Legendre polynomials and exp(i*m*phi).
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      integer(kind=int64),intent(in)::l,m
+      real(kind=real64),intent(in)::theta,phi
+      complex(kind=real64)::Y
+!
+      real(kind=real64)::P_lm,x,norm
+      complex(kind=real64)::eimphi
+      integer(kind=int64)::abs_m
+!
+!     Compute the key input values.
+!
+      x = cos(theta)
+      abs_m = abs(m)
+!
+!     Compute associated Legendre polynomial.
+!
+      call compute_legendre(l,m,x,P_lm)
+!
+!     Figure out the normalization factor.
+!
+      norm = sqrt((2*l + 1)/(mqc_float(4)*acos(-mqc_float(1))) *  &
+        mqc_float(factorial(l-abs_m))/mqc_float(factorial(l+abs_m)))
+!
+!     Compute e^(i m phi)
+!
+      eimphi = cmplx(mqc_float(0),mqc_float(m)*phi,kind=real64)
+      eimphi = exp(eimphi)
+!
+!     Final result
+!
+      Y = norm*P_lm*eimphi
+!
+      return
+      end function Ylm_complex
+
+!
+!PROCEDURE sph_bessel_j
+      function sph_bessel_j(l,x) result(jl)
+!
+!     Computes the spherical Bessel function j_l(x) using direct expressions for
+!     l=0,1 and recurrence for l>1.
+!
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+      integer(kind=int64),intent(in)::l
+      real(kind=real64),intent(in)::x
+      real(kind=real64)::jl
+!
+      integer(kind=int64)::n
+      real(kind=real64)::j0,j1,jn
+!
+!     Handle small-x regime explicitly...
+!
+      if(abs(x).lt.mqc_small) then
+        if(l.eq.0) then
+          jl = mqc_float(1)
+        else
+          jl = mqc_float(0)
+        endIf
+        return
+      endIf
+!
+!     Handle the base cases...
+!
+      if(l.eq.0) then
+        jl = sin(x)/x
+        return
+      endIf
+      if(l.eq.1) then
+        jl = (sin(x)/x**2)-(cos(x)/x)
+        return
+      endIf
+!
+!     Recursion for l > 1...
+!
+      j0 = sin(x)/x
+      j1 = (sin(x)/x**2)-(cos(x)/x)
+!
+      do n=1,l-1
+        jn = ((2*n+1)/x)*j1-j0
+        j0 = j1
+        j1 = jn
+      endDo
+      jl = jn
+!
+      return
+      end function sph_bessel_j
+
 
       end module pad_mod
