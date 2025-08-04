@@ -17,8 +17,8 @@
 !
 !
 !PROCEDURE padCommandLine
-      subroutine padCommandLine(iMODyson,nGridPointsTheta,nGridPointsM,  &
-        kMag,fafName)
+      subroutine padCommandLine(iPEType,iMODyson,nGridPointsTheta,  &
+        nGridPointsM,kMag,fafName)
 !
 !     This routine processes the command line arguments and fills key variables
 !     and option flags.
@@ -27,7 +27,8 @@
 !     H. P. Hratchian, 2025.
 !
       implicit none
-      integer(kind=int64)::iMODyson,nGridPointsTheta,nGridPointsM
+      integer(kind=int64)::iPEType,iMODyson,nGridPointsTheta,  &
+        nGridPointsM
       real(kind=real64)::kMag
       character(len=256)::fafName
 !
@@ -37,8 +38,8 @@
 !     and other option flags.
 !
       nCommandLineArgs = command_argument_count()
-      if(nCommandLineArgs.lt.1.or.nCommandLineArgs.gt.5)  &
-        call mqc_error('PAD expects 1-5 command line arguments.')
+      if(nCommandLineArgs.lt.1.or.nCommandLineArgs.gt.6)  &
+        call mqc_error('PAD expects 1-6 command line arguments.')
       if(.true.) then
         call get_command_argument(1,fafName)
         if(command_argument_count().ge.2) then
@@ -62,12 +63,16 @@
         else
           nGridPointsM = 101
         endIf
+        if(command_argument_count().ge.6) then
+          call mqc_get_command_argument_integer(6,iPEType)
+        else
+          iPEType = 0
+        endIf
       else
         do i = 1,nCommandLineArgs
 
         endDo
       endIf
-
 !
       return
       end subroutine padCommandLine
@@ -171,6 +176,8 @@
 !
       nThetaPoints = 5
       nPhiPoints = 8
+      nThetaPoints = 2
+      nPhiPoints = 3
       thetaStep = Pi/mqc_float(nThetaPoints-1)
       phiStep = mqc_float(2)*Pi/mqc_float(nPhiPoints)
       write(*,*)' thetaStep = ',thetaStep
@@ -263,7 +270,7 @@
 !     Compute P_m^m(x)
 !
       abs_m = abs(m)
-      somx2 = sqrt(max(0.0_real64,1.0_real64 - x*x))
+      somx2 = sqrt(max(mqc_float(0),mqc_float(1)-x*x))
       pmm = mqc_float(1)
       if(abs_m.gt.0) then
         pmm = (-mqc_float(1))**abs_m
@@ -404,8 +411,8 @@
 
 !
 !PROCEDURE dysonMatrixElement1Angle
-      subroutine dysonMatrixElement1Angle(iPEType,lMax,theta,kMag,       &
-        photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,           &
+      subroutine dysonMatrixElement1Angle(iPEType,lMax,theta,kMag,  &
+        photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,  &
         quadraturePoints,quadratureWeights,MSquared,lWeights)
 !
 !     Computes the Dyson transition dipole squared at angle theta using
@@ -416,9 +423,6 @@
 !     H. P. Hratchian, 2025.
 !
       implicit none
-!
-!     Arguments
-!
       integer(kind=int64),intent(in)::iPEType,lMax
       real(kind=real64),intent(in)::theta,kMag
       real(kind=real64),dimension(3),intent(inOut)::photonVector,       &
@@ -429,8 +433,6 @@
       real(kind=real64),intent(out)::MSquared
       real(kind=real64),dimension(0:),intent(out)::lWeights
       class(mqc_basisSet),intent(in)::aoBasisSet
-!
-!     Local variables
 !
       integer(kind=int64)::i,l,m,mu
       real(kind=real64)::rVec(3),r,thetaVal,phiVal,w
@@ -445,17 +447,23 @@
       real(kind=real64),dimension(3)::kVector
       complex(kind=real64)::iunit
 !
-      iunit = (0.0_real64,1.0_real64)
+!     Start by setting up a set of initial variables/arrays.
+!
+      iunit = (0.0,1.0)
       call mqc_normalizeVector(photonVector)
       call mqc_normalizeVector(orthogPlaneVector)
       kVector = cos(theta)*photonVector + sin(theta)*orthogPlaneVector
       kVector = kMag*kVector
 !
+!     Allocate some memory.
+!
       Allocate(MValuesReal(SIZE(quadratureWeights)),  &
         MValuesImaginary(SIZE(quadratureWeights)),    &
         dysonNormTest(SIZE(quadratureWeights)))
 !
-      cLM = (0.0_real64,0.0_real64)
+!     Do the work...
+!
+      cLM = (0.0,0.0)
 !
 !$omp parallel do private(i, aoBasisValues, rVec, r, dysonVal, thetaVal, phiVal, &
 !$omp& l, m, mu, j_l, Ylm, muVal, w, epsilonDotMu, psiF)                          &
@@ -468,7 +476,6 @@
         dysonNormTest(i) = dysonVal*dysonVal
 !
         select case(iPEType)
-!
         case(1)
           w = dot_product(kVector, rVec)
           epsilonDotMu = dot_product(photonVector, rVec)
@@ -480,12 +487,11 @@
             thetaVal = acos(rVec(3)/r)
             phiVal = atan2(rVec(2),rVec(1))
           else
-            thetaVal = 0.0_real64
-            phiVal = 0.0_real64
+            thetaVal = mqc_float(0)
+            phiVal = mqc_float(0)
           endIf
 !
 !         Loop over l and m to build c_{lm}^{(mu)} terms
-!
           do l=0,lMax
             j_l = sph_bessel_j(l,kMag*r)
             do m=-l,l
@@ -500,47 +506,38 @@
           endDo
 !
         case default
-          write(iOut,'(A)') 'ERROR: Invalid iPEType in dysonMatrixElement1Angle.'
-          stop
+          call mqc_error('ERROR: Invalid iPEType in dysonMatrixElement1Angle.')
         end select
       end do
 !$omp end parallel do
 !
       dysonNorm = dot_product(quadratureWeights,dysonNormTest)
 !
+!     If we're working with partial waves, compute the normalized weights by
+!     angular momentum type.
+!
       if(iPEType.eq.2) then
-!
-!       Sum over m and mu to get W_l
-!
         do l=0,lMax
-          W_l(l) = 0.0_real64
+          W_l(l) = mqc_float(0)
           do m=-l,l
             do mu=1,3
               W_l(l) = W_l(l) + abs(cLM(l,m,mu))**2
             endDo
           endDo
         endDo
-!
-!       Normalize
-!
-        if(sum(W_l).gt.1.0d-12) then
+        if(sum(W_l).gt.mqc_small) then
           lWeights(0:lMax) = W_l / sum(W_l)
         else
-          lWeights(0:lMax) = 0.0_real64
+          lWeights(0:lMax) = mqc_float(0)
         endIf
-!
-        MValuesReal = 0.0_real64
-        MValuesImaginary = 0.0_real64
-        do i=1,SIZE(quadratureWeights)
-          MValuesReal(i) = 0.0_real64
-          MValuesImaginary(i) = 0.0_real64
-        endDo
+        MValuesReal = mqc_float(0)
+        MValuesImaginary = mqc_float(0)
 !
 !       Reconstruct dipole projection from cLM
 !
-        dipX = (0.0_real64,0.0_real64)
-        dipY = (0.0_real64,0.0_real64)
-        dipZ = (0.0_real64,0.0_real64)
+        dipX = (0.0,0.0)
+        dipY = (0.0,0.0)
+        dipZ = (0.0,0.0)
         do l=0,lMax
           do m=-l,l
             dipX = dipX + cLM(l,m,1)
@@ -556,14 +553,90 @@
       else
         MSquared = dot_product(quadratureWeights,MValuesReal)**2 +  &
                    dot_product(quadratureWeights,MValuesImaginary)**2
-        lWeights(0) = 1.0_real64
-        do l=1,lMax
-          lWeights(l) = 0.0_real64
-        endDo
+        lWeights = mqc_float(-1)
       endIf
 !
       return
       end subroutine dysonMatrixElement1Angle
+
+!
+!PROCEDURE dysonMatrixElementThetaList
+      subroutine dysonMatrixElementThetaList(iPEType,lMax,thetaVals,  &
+        kMag,photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,  &
+        quadraturePoints,quadratureWeights,Itheta,lWeights,  &
+        lWeightsTheta)
+!
+!     Computes I(theta) at each angle in thetaVals using the specified
+!     outgoing wave representation. Also returns optional partial-wave
+!     angular momentum weights: intensity-averaged (lWeights) and
+!     per-theta resolved (lWeightsTheta).
+!
+!     H. P. Hratchian, 2025.
+!
+      implicit none
+!
+      integer(kind=int64),intent(in)::iPEType,lMax
+      real(kind=real64),dimension(:),intent(in)::thetaVals
+      real(kind=real64),intent(in)::kMag
+      real(kind=real64),dimension(3),intent(in)::photonVector,           &
+        orthogPlaneVector
+      real(kind=real64),dimension(:),intent(in)::dysonCoeffs,            &
+        quadratureWeights
+      real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
+      real(kind=real64),dimension(:),intent(out)::Itheta
+      real(kind=real64),dimension(0:),optional,intent(out)::lWeights
+      real(kind=real64),dimension(0:,:),optional,intent(out)::lWeightsTheta
+      class(mqc_basisSet),intent(in)::aoBasisSet
+!
+      integer(kind=int64)::iTh,nTh,l
+      real(kind=real64)::theta,MSq,Itot
+      real(kind=real64),dimension(0:lMax)::lWTemp
+      real(kind=real64),dimension(0:lMax)::Wsum
+      real(kind=real64),dimension(3)::pVec,oVec
+!
+!     Initialization
+!
+      nTh = size(thetaVals)
+      pVec = photonVector
+      oVec = orthogPlaneVector
+      Wsum = mqc_float(0)
+      Itot = mqc_float(0)
+!
+!     Loop through theta values
+!
+      do iTh=1,nTh
+        theta = thetaVals(iTh)
+        call dysonMatrixElement1Angle(iPEType,lMax,theta,kMag, pVec,  &
+          oVec,dysonCoeffs,aoBasisSet,quadraturePoints,  &
+          quadratureWeights,MSq,lWTemp)
+        Itheta(iTh) = MSq
+        Itot = Itot + MSq
+        if(present(lWeightsTheta)) then
+          do l=0,lMax
+            lWeightsTheta(l,iTh) = lWTemp(l)
+          end do
+        end if
+        if(present(lWeights)) then
+          do l=0,lMax
+            Wsum(l) = Wsum(l) + MSq * lWTemp(l)
+          end do
+        end if
+      end do
+!
+      if(present(lWeights)) then
+        if(Itot.gt.mqc_small) then
+          do l=0,lMax
+            lWeights(l) = Wsum(l) / Itot
+          end do
+        else
+          do l=0,lMax
+            lWeights(l) = mqc_float(0)
+          end do
+        end if
+      end if
+!
+      return
+      end subroutine dysonMatrixElementThetaList
 
 
       end module pad_mod

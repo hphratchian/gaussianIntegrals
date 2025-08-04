@@ -10,6 +10,7 @@
 !           3. magnitude of the k-vector in eV
 !           4. number of angles to evaluate from 0 --> pi (optional; default=15)
 !           5. number of spatial grid points (optional; default=101)
+!           6. iPEType flag (optional; default=0)
 !
 !     CODE STATUS: At this time, it seems that the program works numerically.
 !     However, some tests result in very large PAD intensities. I'm not sure if
@@ -29,12 +30,12 @@
       integer(kind=int64),parameter::nOMP=1,lMax=2
       logical,parameter::extraPrint=.false.
       integer(kind=int64)::i,j,k,iMODyson,nGridPointsM,  &
-        nGridPointsTheta,nGridPointsPhi,nIntPlanes,iPeType
+        nGridPointsTheta,nGridPointsPhi,nIntPlanes,iPEType
       real(kind=real64)::tStart,tEnd,tstart1,tEnd1,stepSizeIntM,  &
         stepSizeTheta,thetaStart,stepSizePhi,moVal1,moVal2,kMag,  &
         MSquared0,MSquared90
       real(kind=real64),dimension(3)::cartStart,cartEnd
-      real(kind=real64),dimension(0:lMax)::lWeights0,lWeights90
+      real(kind=real64),dimension(0:lMax)::lWeights0,lWeights90,lWeights
       real(kind=real64),dimension(:),allocatable::integratedIntensity,  &
         betaValsParaPerp,betaValsFit,rSquared
       real(kind=real64),dimension(:,:),allocatable::laserVector,  &
@@ -94,47 +95,6 @@
       fail = .false.
       write(iOut,1000)
       call mqc_version_print(iOut)
-
-!hph+
-!      write(iOut,*)
-!      write(iOut,*)
-!      write(iOut,*)
-!      write(iOut,*)' Hrant - testing 1D periodic numerical integration...'
-!      nGridPointsTheta = 10
-!      stepSizeTheta = mqc_float(2)*pi/(nGridPointsTheta-1)
-!      write(iOut,*)'    nGridPointsTheta = ',nGridPointsTheta
-!      write(iOut,*)'    stepSizeTheta    = ',stepSizeTheta
-!      Allocate(quadGridTheta(nGridPointsTheta),  &
-!        quadWeightsTheta(nGridPointsTheta))
-!      call setup_quadrature_trapezoid1d(nGridPointsTheta,stepSizeTheta,  &
-!        mqc_float(0),quadGridTheta,quadWeightsTheta)
-!      call mqc_print(quadGridTheta,iOut,header='grid points')
-!      call mqc_print(quadGridTheta/pi,iOut,header='grid points (pi)')
-!      call mqc_print(quadWeightsTheta,iOut,header='weights')
-!      write(iOut,*)'    sum(weights) in Pi units= ',sum(quadWeightsTheta)/pi
-!      Allocate(quadValues(Size(quadGridTheta)))
-!      quadValues = sin(quadGridTheta)
-!      write(iOut,*)'    Int_0^2Pi(sin(theta))   = ',dot_product(quadValues,quadWeightsTheta)
-!      quadValues = cos(quadGridTheta)
-!      write(iOut,*)'    Int_0^2Pi(cos(theta))   = ',dot_product(quadValues,quadWeightsTheta)
-!      quadValues = cos(quadGridTheta)**2
-!      write(iOut,'(A,f12.8,A,f12.8,A)')'     Int_0^2Pi(cos^2(theta)) = ',dot_product(quadValues,quadWeightsTheta),' = ',  &
-!       dot_product(quadValues,quadWeightsTheta)/pi,' Pi'
-!      write(iOut,*)
-!      write(iOut,*)
-!      write(iOut,*)
-!      write(iOut,*)
-!      DeAllocate(quadGridTheta,quadWeightsTheta)
-!      goto 999
-!
-!      write(iOut,*)' Hrant - testing spherical grid set-up code...'
-!      call mqc_sphericalGrid(10,5,1.0,quadGridM)
-!      write(iOut,*)
-!      write(iOut,*)
-!      write(iOut,*)
-!      goto 999
-!hph-
-
 !
 !     Memory check...
 !
@@ -143,8 +103,8 @@
 !     Call padCommandLine to parse the command line and fill input and other job
 !     option flags.
 !
-      call padCommandLine(iMODyson,nGridPointsTheta,nGridPointsM,  &
-        kMag,fafName)
+      call padCommandLine(iPEType,iMODyson,nGridPointsTheta,  &
+        nGridPointsM,kMag,fafName)
 !
 !     Load the FAF.
 !
@@ -278,7 +238,10 @@
 !
 
 !hph+
-      iPeType = 1
+      write(iOut,*)
+      write(iOut,*)' Hrant - iPEType = ',iPEType
+      lWeights0 = -1.0
+      lWeights90 = -1.0
 !hph-
 
       do i = 1,nIntPlanes
@@ -288,16 +251,17 @@
         call CPU_TIME(tStart1)
 
 !hph+
-        if(.false.) then
-        MSquared0 = dysonPlaneWaveMatrixElementSquared(mqc_float(0),kMag,  &
-          laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
-          basisSet,quadGridM,quadWeightsM)
+        if(iPEType.eq.0) then
+          MSquared0 = dysonPlaneWaveMatrixElementSquared(mqc_float(0),kMag,  &
+            laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
+            basisSet,quadGridM,quadWeightsM)
         else
-        call dysonMatrixElement1Angle(iPeType,lMax,mqc_float(0),kMag,  &
-          laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
-          basisSet,quadGridM,quadWeightsM,MSquared0,lWeights0)
+          call dysonMatrixElement1Angle(iPEType,lMax,mqc_float(0),kMag,  &
+            laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
+            basisSet,quadGridM,quadWeightsM,MSquared0,lWeights0)
         endIf
-        write(iOut,*)' Hrant - MSquared0 = ',mSquared0
+        write(iOut,*)' Hrant - MSquared0  = ',mSquared0
+        call mqc_print(lWeights0,iOut,header='l weights (0)')
 !hph-
 
         call CPU_TIME(tEnd1)
@@ -305,35 +269,60 @@
         call CPU_TIME(tStart1)
 
 !hph+
-        if(.true.) then
-        MSquared90 = dysonPlaneWaveMatrixElementSquared(Pi/mqc_float(2),  &
-          kMag,laserVector(:,i),orthogPlaneVector(:,i),  &
-          moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+        if(iPEType.eq.0) then
+          MSquared90 = dysonPlaneWaveMatrixElementSquared(Pi/mqc_float(2),  &
+            kMag,laserVector(:,i),orthogPlaneVector(:,i),  &
+            moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
         else
-        call dysonMatrixElement1Angle(iPeType,lMax,Pi/mqc_float(2),kMag,  &
-          laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
-          basisSet,quadGridM,quadWeightsM,MSquared90,lWeights90)
+          call dysonMatrixElement1Angle(iPEType,lMax,Pi/mqc_float(2),kMag,  &
+            laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
+            basisSet,quadGridM,quadWeightsM,MSquared90,lWeights90)
         endIf
+        write(iOut,*)' Hrant - MSquared90 = ',mSquared90
+        call mqc_print(lWeights90,iOut,header='l weights (90)')
 !hph-
 
         call CPU_TIME(tEnd1)
         write(iOut,8998) 'MSquared90',tEnd1-tStart1
         call CPU_TIME(tStart1)
         flush(iOut)
-        MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
-          quadGridTheta,kMag,laserVector(:,i),orthogPlaneVector(:,i),  &
-          moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
-        MSquaredList2 = dysonPlaneWaveMatrixElementSquaredPhiThetaList(  &
-          quadGridPhi,quadGridTheta,kMag,laserVector(:,i),  &
-          orthogPlaneVector(:,i),moCoeffs(:,iMODyson),basisSet,  &
-          quadGridM,quadWeightsM)
+
+!hph+
+        goto 999
+!hph-
+
+        if(iPEType.eq.0) then
+          MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
+            quadGridTheta,kMag,laserVector(:,i),orthogPlaneVector(:,i),  &
+            moCoeffs(:,iMODyson),basisSet,quadGridM,quadWeightsM)
+        else
+
+          if(Allocated(mSquaredList)) DeAllocate(mSquaredList)
+          Allocate(mSquaredList(nGridPointsTheta))
+
+!          call dysonMatrixElementThetaList(iPEType,lMax,quadGridTheta,kMag,  &
+!            laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
+!            basisSet,quadGridM,quadWeightsM,MSquaredList,lWeights)
+          call dysonMatrixElementThetaList(iPEType,lMax,quadGridTheta,kMag,  &
+            laserVector(:,i),orthogPlaneVector(:,i),moCoeffs(:,iMODyson),  &
+            basisSet,quadGridM,quadWeightsM,MSquaredList)
+        endIf
         call mqc_print(MSquaredList,iOut,header='MSquaredList',blank_at_top=.true.)
-        call mqc_print(MSquaredList2,iOut,header='MSquaredList2',blank_at_top=.true.)
-        do j = 1,nGridPointsPhi
-          call betaLeastSquares(MSquaredList2(j,:),quadGridTheta,  &
-            tmpBeta,tmpR2)
-          write(iOut,*) quadGridPhi(j)/Pi,tmpBeta,tmpR2
-        endDo
+
+
+!hph+
+!        MSquaredList2 = dysonPlaneWaveMatrixElementSquaredPhiThetaList(  &
+!          quadGridPhi,quadGridTheta,kMag,laserVector(:,i),  &
+!          orthogPlaneVector(:,i),moCoeffs(:,iMODyson),basisSet,  &
+!          quadGridM,quadWeightsM)
+!        call mqc_print(MSquaredList2,iOut,header='MSquaredList2',blank_at_top=.true.)
+!        do j = 1,nGridPointsPhi
+!          call betaLeastSquares(MSquaredList2(j,:),quadGridTheta,  &
+!            tmpBeta,tmpR2)
+!          write(iOut,*) quadGridPhi(j)/Pi,tmpBeta,tmpR2
+!        endDo
+!hph-
+
         call CPU_TIME(tEnd1)
         write(iOut,8998) 'MSquared(theta) list',tEnd1-tStart1
         flush(iOut)
@@ -362,18 +351,22 @@
         write(iOut,3100) MSquared0,MSquared90,  &
           betaParaPerp(MSquared0,MSquared90)
         flush(iOut)
-        if(.not.Allocated(MSquaredList1))  &
-          Allocate(MSquaredList1(Size(MSquaredList)))
-        MSquaredList1 = mqc_float(0)
-        do j = 1,nGridPointsTheta
-          do k = 1,nGridPointsPhi
-            MSquaredList1(j) = MSquaredList1(j)+MSquaredList2(k,j)*stepSizeTheta
-          endDo
-        endDo
-        call mqc_print(MSquaredList1,iOut,header='MSquaredList1')
-        call betaLeastSquares(MSquaredList1,quadGridTheta,tmpBeta,tmpR2)
-        write(iOut,*)' beta,R**2:',tmpBeta,tmpR2
-        write(iOut,*)
+
+!hph+
+!        if(.not.Allocated(MSquaredList1))  &
+!          Allocate(MSquaredList1(Size(MSquaredList)))
+!        MSquaredList1 = mqc_float(0)
+!        do j = 1,nGridPointsTheta
+!          do k = 1,nGridPointsPhi
+!            MSquaredList1(j) = MSquaredList1(j)+MSquaredList2(k,j)*stepSizeTheta
+!          endDo
+!        endDo
+!        call mqc_print(MSquaredList1,iOut,header='MSquaredList1')
+!        call betaLeastSquares(MSquaredList1,quadGridTheta,tmpBeta,tmpR2)
+!        write(iOut,*)' beta,R**2:',tmpBeta,tmpR2
+!        write(iOut,*)
+!hph-
+
       endDo
 !
 !     Print out the integrated planar intensity for each laser vector. Then
@@ -388,6 +381,11 @@
       write(iOut,3520)
       write(iOut,3530) SUM(betaValsParaPerp)/mqc_float(nIntPlanes),  &
         SUM(betaValsFit)/mqc_float(nIntPlanes)
+
+!hph+
+      goto 999
+!hph-
+
 !
 !     The end of the program.
 !
