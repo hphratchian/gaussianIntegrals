@@ -27,7 +27,7 @@
 !
       use pad_mod
       implicit none
-      integer(kind=int64),parameter::nOMP=1,lMax=2
+      integer(kind=int64),parameter::nOMP=1,lMax=6
       logical,parameter::extraPrint=.false.
       integer(kind=int64)::i,j,k,iMODyson,nGridPointsM,  &
         nGridPointsTheta,nGridPointsPhi,nIntPlanes,iPEType
@@ -57,6 +57,10 @@
       real(kind=real64),dimension(:,:),allocatable::basisIntegrals,  &
         overlapMatrix
       real(kind=real64),dimension(:),allocatable::quadValues
+!
+      integer(kind=int64)::lTemp,mTemp,nTheta,nPhi
+      real(kind=real64)::intTest
+      real(kind=real64),dimension(:),allocatable::gridTheta,gridPhi,weightsTemp
 !
 !     Format statements.
 !
@@ -109,6 +113,9 @@
 !     Load the FAF.
 !
       call faf%load(fafName)
+
+
+!hph+
 !
 !     Allocate arrays used for the number of integration planes. Then fill the
 !     arrays laserVector and orthogPlaneVector. Currently, there are two methods
@@ -154,6 +161,10 @@
         Allocate(intPlaneLabels(nIntPlanes))
         intPlaneLabels = 'a'
       endIf
+!hph-
+
+
+
 !
 !     Read the basis set and MO coefficients from faf.
 !
@@ -233,6 +244,27 @@
       call CPU_TIME(tEnd1)
       write(iOut,8998) 'norm test',tEnd1-tStart1
       flush(iOut)
+
+
+
+
+
+
+
+
+!
+!     Test the normalization of the spherical harmonics.
+!
+      nTheta = 25
+      nPhi = 50
+      Allocate(intTest(Size(quadWeightsM)))
+      call generate_sph_grid(nTheta, nPhi, thetaVals, phiVals, weights)
+      do i = 1,Size(quadWeightsM)
+
+
+      function Ylm_complex(l,m,theta,phi) result(Y)
+
+
 !
 !     Integrate the Dyson/plane wave matrix elements as a function of theta.
 !

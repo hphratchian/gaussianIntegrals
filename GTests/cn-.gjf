@@ -1,0 +1,13 @@
+%chk=cn-.chk
+#p test uwb97xd 6-311+g(d) 6d 10f opt
+int(preComputeXCGridPoints,grid=superfine)
+output=faf
+
+CN- job
+
+-1  1
+c
+n  1  1.5
+
+cn-.faf
+

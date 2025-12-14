@@ -1,0 +1,11 @@
+%oldchk=cn-.chk
+#p test wb97xd 6-311+g(d) 6d 10f geom=check guess=read
+int(preComputeXCGridPoints,grid=superfine)
+output=faf
+
+CN job
+
+ 0  2
+
+cn.faf
+

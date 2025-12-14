@@ -77,6 +77,61 @@
       return
       end subroutine padCommandLine
 
+
+!hph+
+!
+!PROCEDURE pad
+!
+!     Allocate arrays used for the number of integration planes. Then fill the
+!     arrays laserVector and orthogPlaneVector. Currently, there are two methods
+!     in the program to do this. The first method simply sets up 3 integration
+!     plane along the primary axes. The second methods sets up a set of equally
+!     spaced vectors going around a unit sphere.
+!
+      if(.false.) then
+        nIntPlanes = 3
+        Allocate(integratedIntensity(nIntPlanes),  &
+          betaValsParaPerp(nIntPlanes),betaValsFit(nIntPlanes),  &
+          rSquared(nIntPlanes))
+        Allocate(laserVector(3,nIntPlanes),  &
+          orthogPlaneVector(3,nIntPlanes))
+        Allocate(intPlaneLabels(nIntPlanes))
+!
+!       Set the laser electric field vector and the orthogonal vector defining
+!       the integration plane to be used with each electric field. At present we
+!       hardwire 3 experiments with the electric field vector and planar slice
+!       of photoelectron transition dipole matrices:
+!           1. eVector: (1,0,0)  |  plane: yx
+!           2. eVector: (0,1,0)  |  plane: yz
+!           3. eVector: (0,0,1)  |  plane: xz
+!
+        intPlaneLabels(1) = 'xy'
+        laserVector(:,1) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
+        orthogPlaneVector(:,1) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
+!
+        intPlaneLabels(2) = 'yz'
+        laserVector(:,2) = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
+        orthogPlaneVector(:,2) = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
+!
+        intPlaneLabels(3)      = 'zx'
+        laserVector(:,3)       = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
+        orthogPlaneVector(:,3) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
+      else
+        call buildSphereGrid(laserVector,orthogPlaneVector)
+        nIntPlanes = Size(laserVector,2)
+        write(iOut,*)' nIntPlanes = ',nIntPlanes
+        Allocate(integratedIntensity(nIntPlanes),  &
+          betaValsParaPerp(nIntPlanes),betaValsFit(nIntPlanes),  &
+          rSquared(nIntPlanes))
+        Allocate(intPlaneLabels(nIntPlanes))
+        intPlaneLabels = 'a'
+      endIf
+!hph-
+
+
+
+
+
 !PROCEDURE betaParaPerp
       function betaParaPerp(IPara,IPerp) result(beta)
 !
@@ -409,155 +464,423 @@
       return
       end function sph_bessel_j
 
+!hph+
+!!
+!!PROCEDURE dysonMatrixElement1Angle
+!      subroutine dysonMatrixElement1Angle(iPEType,lMax,theta,kMag,  &
+!        photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,  &
+!        quadraturePoints,quadratureWeights,MSquared,lWeights)
+!!
+!!     Computes the Dyson transition dipole squared at angle theta using
+!!     the specified photoelectron representation. If iPEType==2, this
+!!     also computes the normalized partial wave ℓ contributions.
+!!
+!!
+!!     H. P. Hratchian, 2025.
+!!
+!      implicit none
+!      integer(kind=int64),intent(in)::iPEType,lMax
+!      real(kind=real64),intent(in)::theta,kMag
+!      real(kind=real64),dimension(3),intent(inOut)::photonVector,       &
+!        orthogPlaneVector
+!      real(kind=real64),dimension(:),intent(in)::dysonCoeffs,           &
+!        quadratureWeights
+!      real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
+!      real(kind=real64),intent(out)::MSquared
+!      real(kind=real64),dimension(0:),intent(out)::lWeights
+!      class(mqc_basisSet),intent(in)::aoBasisSet
+!!
+!      integer(kind=int64)::i,l,m,mu
+!      real(kind=real64)::rVec(3),r,thetaVal,phiVal,w
+!      real(kind=real64)::j_l,dysonVal,dysonNorm
+!      real(kind=real64)::epsilonDotMu
+!      complex(kind=real64)::Ylm,psiF,muVal
+!      complex(kind=real64)::dipX,dipY,dipZ
+!      complex(kind=real64),dimension(0:lMax,-lMax:lMax,3)::cLM
+!      real(kind=real64),dimension(0:lMax)::W_l
+!      real(kind=real64),dimension(:),allocatable::aoBasisValues,        &
+!        MValuesReal,MValuesImaginary,dysonNormTest
+!      real(kind=real64),dimension(3)::kVector
+!      complex(kind=real64)::iunit
+!!
+!!     Start by setting up a set of initial variables/arrays.
+!!
+!      iunit = (0.0,1.0)
+!      call mqc_normalizeVector(photonVector)
+!      call mqc_normalizeVector(orthogPlaneVector)
+!      kVector = cos(theta)*photonVector + sin(theta)*orthogPlaneVector
+!      kVector = kMag*kVector
+!!
+!!     Allocate some memory.
+!!
+!      Allocate(MValuesReal(SIZE(quadratureWeights)),  &
+!        MValuesImaginary(SIZE(quadratureWeights)),    &
+!        dysonNormTest(SIZE(quadratureWeights)))
+!!
+!!     Do the work...
+!!
+!      cLM = (0.0,0.0)
+!!
+!!$omp parallel do private(i, aoBasisValues, rVec, r, dysonVal, thetaVal, phiVal, &
+!!$omp& l, m, mu, j_l, Ylm, muVal, w, epsilonDotMu, psiF)                          &
+!!$omp& shared(MValuesReal, MValuesImaginary, dysonNormTest, cLM) schedule(dynamic)
+!      do i = 1,SIZE(quadratureWeights)
+!        rVec = quadraturePoints(:,i)
+!        r = sqrt(dot_product(rVec,rVec))
+!        call basisSetValuesList1(aoBasisSet, rVec, aoBasisValues)
+!        dysonVal = dot_product(dysonCoeffs, aoBasisValues)
+!        dysonNormTest(i) = dysonVal*dysonVal
+!!
+!        select case(iPEType)
+!        case(1)
+!          w = dot_product(kVector, rVec)
+!          epsilonDotMu = dot_product(photonVector, rVec)
+!          MValuesReal(i) = cos(w)*epsilonDotMu*dysonVal
+!          MValuesImaginary(i) = -sin(w)*epsilonDotMu*dysonVal
+!!
+!        case(2)
+!          if(r.gt.1.0d-10) then
+!            thetaVal = acos(rVec(3)/r)
+!            phiVal = atan2(rVec(2),rVec(1))
+!          else
+!            thetaVal = mqc_float(0)
+!            phiVal = mqc_float(0)
+!          endIf
+!!
+!!         Loop over l and m to build c_{lm}^{(mu)} terms
+!          do l=0,lMax
+!            j_l = sph_bessel_j(l,kMag*r)
+!            do m=-l,l
+!              Ylm = Ylm_complex(l,m,thetaVal,phiVal)
+!              do mu=1,3
+!                epsilonDotMu = rVec(mu)
+!                muVal = j_l*conjg(Ylm)*epsilonDotMu*dysonVal
+!!$omp atomic
+!                cLM(l,m,mu) = cLM(l,m,mu) + quadratureWeights(i)*muVal
+!              endDo
+!            endDo
+!          endDo
+!!
+!        case default
+!          call mqc_error('ERROR: Invalid iPEType in dysonMatrixElement1Angle.')
+!        end select
+!      end do
+!!$omp end parallel do
+!!
+!      dysonNorm = dot_product(quadratureWeights,dysonNormTest)
+!!
+!!     If we're working with partial waves, compute the normalized weights by
+!!     angular momentum type.
+!!
+!      if(iPEType.eq.2) then
+!        do l=0,lMax
+!          W_l(l) = mqc_float(0)
+!          do m=-l,l
+!            do mu=1,3
+!              W_l(l) = W_l(l) + abs(cLM(l,m,mu))**2
+!            endDo
+!          endDo
+!        endDo
+!        if(sum(W_l).gt.mqc_small) then
+!          lWeights(0:lMax) = W_l / sum(W_l)
+!        else
+!          lWeights(0:lMax) = mqc_float(0)
+!        endIf
+!        MValuesReal = mqc_float(0)
+!        MValuesImaginary = mqc_float(0)
+!!
+!!       Reconstruct dipole projection from cLM
+!!
+!        dipX = (0.0,0.0)
+!        dipY = (0.0,0.0)
+!        dipZ = (0.0,0.0)
+!        do l=0,lMax
+!          do m=-l,l
+!            dipX = dipX + cLM(l,m,1)
+!            dipY = dipY + cLM(l,m,2)
+!            dipZ = dipZ + cLM(l,m,3)
+!          endDo
+!        endDo
+!!
+!        MSquared = abs( dipX*photonVector(1) +  &
+!                        dipY*photonVector(2) +  &
+!                        dipZ*photonVector(3) )**2
+!!
+!      else
+!        MSquared = dot_product(quadratureWeights,MValuesReal)**2 +  &
+!                   dot_product(quadratureWeights,MValuesImaginary)**2
+!        lWeights = mqc_float(-1)
+!      endIf
+!!
+!      return
+!      end subroutine dysonMatrixElement1Angle
+!hph-
+
+!hph+
+!!PROCEDURE dysonMatrixElement1Angle
+!      subroutine dysonMatrixElement1Angle(iPEType,lMax,theta,kMag,  &
+!        photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,  &
+!        quadraturePoints,quadratureWeights,MSquared,lWeights)
+!!
+!      implicit none
+!      integer(kind=int64),intent(in)::iPEType,lMax
+!      real(kind=real64),intent(in)::theta,kMag
+!      real(kind=real64),dimension(3),intent(inOut)::photonVector,       &
+!        orthogPlaneVector
+!      real(kind=real64),dimension(:),intent(in)::dysonCoeffs,           &
+!        quadratureWeights
+!      real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
+!      real(kind=real64),intent(out)::MSquared
+!      real(kind=real64),dimension(0:),intent(out)::lWeights
+!      class(mqc_basisSet),intent(in)::aoBasisSet
+!!
+!      integer(kind=int64)::i,l,m,mu
+!      real(kind=real64)::rVec(3),r,thetaVal,phiVal,w
+!      real(kind=real64)::j_l,dysonVal,dysonNorm
+!      real(kind=real64)::epsilonDotMu
+!      complex(kind=real64)::Ylm,psiF,muVal
+!      complex(kind=real64)::dipX,dipY,dipZ
+!      complex(kind=real64),dimension(0:lMax,-lMax:lMax,3)::cLM
+!      real(kind=real64),dimension(0:lMax)::W_l
+!      real(kind=real64),dimension(:),allocatable::aoBasisValues,        &
+!        MValuesReal,MValuesImaginary,dysonNormTest
+!      real(kind=real64),dimension(3)::kVector
+!      complex(kind=real64)::iunit
+!!
+!      iunit = (0.0,1.0)
+!      call mqc_normalizeVector(photonVector)
+!      call mqc_normalizeVector(orthogPlaneVector)
+!      kVector = cos(theta)*photonVector + sin(theta)*orthogPlaneVector
+!      kVector = kMag*kVector
+!!
+!      Allocate(MValuesReal(SIZE(quadratureWeights)),  &
+!        MValuesImaginary(SIZE(quadratureWeights)),    &
+!        dysonNormTest(SIZE(quadratureWeights)))
+!!
+!      cLM = (0.0,0.0)
+!!
+!!$omp parallel do private(i, aoBasisValues, rVec, r, dysonVal, thetaVal, phiVal, &
+!!$omp& l, m, mu, j_l, Ylm, muVal, w, epsilonDotMu, psiF)                          &
+!!$omp& shared(MValuesReal, MValuesImaginary, dysonNormTest, cLM) schedule(dynamic)
+!      do i = 1,SIZE(quadratureWeights)
+!        rVec = quadraturePoints(:,i)
+!        r = sqrt(dot_product(rVec,rVec))
+!        call basisSetValuesList1(aoBasisSet, rVec, aoBasisValues)
+!        dysonVal = dot_product(dysonCoeffs, aoBasisValues)
+!        dysonNormTest(i) = dysonVal*dysonVal
+!!
+!        select case(iPEType)
+!        case(1)
+!          w = dot_product(kVector, rVec)
+!          epsilonDotMu = dot_product(photonVector, rVec)
+!          MValuesReal(i) = cos(w)*epsilonDotMu*dysonVal
+!          MValuesImaginary(i) = -sin(w)*epsilonDotMu*dysonVal
+!!
+!        case(2)
+!          if(r.gt.1.0d-10) then
+!            thetaVal = acos(rVec(3)/r)
+!            phiVal = atan2(rVec(2),rVec(1))
+!          else
+!            thetaVal = mqc_float(0)
+!            phiVal = mqc_float(0)
+!          endIf
+!!
+!          do l=0,lMax
+!            j_l = sph_bessel_j(l,kMag*r)
+!            do m=-l,l
+!              Ylm = Ylm_complex(l,m,thetaVal,phiVal)
+!              do mu=1,3
+!                epsilonDotMu = rVec(mu)
+!                muVal = j_l * Ylm * epsilonDotMu * dysonVal
+!!$omp atomic
+!                cLM(l,m,mu) = cLM(l,m,mu) + quadratureWeights(i)*muVal
+!              endDo
+!            endDo
+!          endDo
+!!
+!        case default
+!          call mqc_error('ERROR: Invalid iPEType in dysonMatrixElement1Angle.')
+!        end select
+!      end do
+!!$omp end parallel do
+!!
+!      dysonNorm = dot_product(quadratureWeights,dysonNormTest)
+!!
+!      if(iPEType.eq.2) then
+!        do l=0,lMax
+!          W_l(l) = mqc_float(0)
+!          do m=-l,l
+!            do mu=1,3
+!              W_l(l) = W_l(l) + abs(cLM(l,m,mu))**2
+!            endDo
+!          endDo
+!          write(iOut,*)'l,W_l(l) = ',l,W_l(l)
+!        endDo
+!        if(sum(W_l).gt.MQC_Small) then
+!          lWeights(0:lMax) = W_l / sum(W_l)
+!        else
+!          lWeights(0:lMax) = mqc_float(0)
+!        endIf
+!!
+!        dipX = (0.0,0.0)
+!        dipY = (0.0,0.0)
+!        dipZ = (0.0,0.0)
+!        do l=0,lMax
+!          do m=-l,l
+!            dipX = dipX + cLM(l,m,1)
+!            dipY = dipY + cLM(l,m,2)
+!            dipZ = dipZ + cLM(l,m,3)
+!          endDo
+!        endDo
+!!
+!!       Debug print: inspect dipole components and projected MSquared
+!        write(*,*) 'DEBUG: dipX = ', dipX
+!        write(*,*) 'DEBUG: dipY = ', dipY
+!        write(*,*) 'DEBUG: dipZ = ', dipZ
+!        write(*,*) 'DEBUG: photonVector = ', photonVector
+!        write(*,*) 'DEBUG: dot(dip, epsilon) = ',  &
+!                    dipX*photonVector(1) +  &
+!                    dipY*photonVector(2) +  &
+!                    dipZ*photonVector(3)
 !
+!!
+!        MSquared = abs( dipX*photonVector(1) +  &
+!                        dipY*photonVector(2) +  &
+!                        dipZ*photonVector(3) )**2
+!!
+!      else
+!        MSquared = dot_product(quadratureWeights,MValuesReal)**2 +  &
+!                   dot_product(quadratureWeights,MValuesImaginary)**2
+!        lWeights(0) = mqc_float(1)
+!        do l=1,lMax
+!          lWeights(l) = mqc_float(0)
+!        endDo
+!      endIf
+!!
+!      return
+!      end subroutine dysonMatrixElement1Angle
+!hph-
+
 !PROCEDURE dysonMatrixElement1Angle
-      subroutine dysonMatrixElement1Angle(iPEType,lMax,theta,kMag,  &
-        photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,  &
-        quadraturePoints,quadratureWeights,MSquared,lWeights)
+subroutine dysonMatrixElement1Angle(iPEType,lMax,theta,kMag,  &
+  photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,  &
+  quadraturePoints,quadratureWeights,MSquared,lWeights)
 !
-!     Computes the Dyson transition dipole squared at angle theta using
-!     the specified photoelectron representation. If iPEType==2, this
-!     also computes the normalized partial wave ℓ contributions.
+  implicit none
+  integer(kind=int64),intent(in) :: iPEType,lMax
+  real(kind=real64),intent(in) :: theta,kMag
+  real(kind=real64),dimension(3),intent(inOut) :: photonVector, orthogPlaneVector
+  real(kind=real64),dimension(:),intent(in) :: dysonCoeffs, quadratureWeights
+  real(kind=real64),dimension(:,:),intent(in) :: quadraturePoints
+  real(kind=real64),intent(out) :: MSquared
+  real(kind=real64),dimension(0:),intent(out) :: lWeights
+  class(mqc_basisSet),intent(in) :: aoBasisSet
 !
+  integer(kind=int64) :: i, l, m
+  real(kind=real64) :: rVec(3), r, thetaVal, phiVal, w
+  real(kind=real64) :: j_l, dysonVal, dysonNorm, epsilonDotR
+  complex(kind=real64) :: Ylm, muVal
+  complex(kind=real64) :: dipoleAmp
+  complex(kind=real64),dimension(0:lMax,-lMax:lMax) :: cLM
+  real(kind=real64),dimension(0:lMax) :: W_l
+  real(kind=real64),dimension(:),allocatable :: aoBasisValues,        &
+       MValuesReal, MValuesImaginary, dysonNormTest
+  real(kind=real64),dimension(3) :: kVector
+  complex(kind=real64) :: iunit
 !
-!     H. P. Hratchian, 2025.
+  iunit = (0.0_real64, 1.0_real64)
+  call mqc_normalizeVector(photonVector)
+  call mqc_normalizeVector(orthogPlaneVector)
+  kVector = cos(theta)*photonVector + sin(theta)*orthogPlaneVector
+  kVector = kMag * kVector
 !
-      implicit none
-      integer(kind=int64),intent(in)::iPEType,lMax
-      real(kind=real64),intent(in)::theta,kMag
-      real(kind=real64),dimension(3),intent(inOut)::photonVector,       &
-        orthogPlaneVector
-      real(kind=real64),dimension(:),intent(in)::dysonCoeffs,           &
-        quadratureWeights
-      real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
-      real(kind=real64),intent(out)::MSquared
-      real(kind=real64),dimension(0:),intent(out)::lWeights
-      class(mqc_basisSet),intent(in)::aoBasisSet
+  allocate(MValuesReal(size(quadratureWeights)),  &
+           MValuesImaginary(size(quadratureWeights)),  &
+           dysonNormTest(size(quadratureWeights)))
 !
-      integer(kind=int64)::i,l,m,mu
-      real(kind=real64)::rVec(3),r,thetaVal,phiVal,w
-      real(kind=real64)::j_l,dysonVal,dysonNorm
-      real(kind=real64)::epsilonDotMu
-      complex(kind=real64)::Ylm,psiF,muVal
-      complex(kind=real64)::dipX,dipY,dipZ
-      complex(kind=real64),dimension(0:lMax,-lMax:lMax,3)::cLM
-      real(kind=real64),dimension(0:lMax)::W_l
-      real(kind=real64),dimension(:),allocatable::aoBasisValues,        &
-        MValuesReal,MValuesImaginary,dysonNormTest
-      real(kind=real64),dimension(3)::kVector
-      complex(kind=real64)::iunit
-!
-!     Start by setting up a set of initial variables/arrays.
-!
-      iunit = (0.0,1.0)
-      call mqc_normalizeVector(photonVector)
-      call mqc_normalizeVector(orthogPlaneVector)
-      kVector = cos(theta)*photonVector + sin(theta)*orthogPlaneVector
-      kVector = kMag*kVector
-!
-!     Allocate some memory.
-!
-      Allocate(MValuesReal(SIZE(quadratureWeights)),  &
-        MValuesImaginary(SIZE(quadratureWeights)),    &
-        dysonNormTest(SIZE(quadratureWeights)))
-!
-!     Do the work...
-!
-      cLM = (0.0,0.0)
+  cLM = (0.0, 0.0)
 !
 !$omp parallel do private(i, aoBasisValues, rVec, r, dysonVal, thetaVal, phiVal, &
-!$omp& l, m, mu, j_l, Ylm, muVal, w, epsilonDotMu, psiF)                          &
+!$omp& l, m, j_l, Ylm, muVal, epsilonDotR, w)                                     &
 !$omp& shared(MValuesReal, MValuesImaginary, dysonNormTest, cLM) schedule(dynamic)
-      do i = 1,SIZE(quadratureWeights)
-        rVec = quadraturePoints(:,i)
-        r = sqrt(dot_product(rVec,rVec))
-        call basisSetValuesList1(aoBasisSet, rVec, aoBasisValues)
-        dysonVal = dot_product(dysonCoeffs, aoBasisValues)
-        dysonNormTest(i) = dysonVal*dysonVal
+  do i = 1, size(quadratureWeights)
+    rVec = quadraturePoints(:,i)
+    r = sqrt(dot_product(rVec,rVec))
+    call basisSetValuesList1(aoBasisSet, rVec, aoBasisValues)
+    dysonVal = dot_product(dysonCoeffs, aoBasisValues)
+    dysonNormTest(i) = dysonVal*dysonVal
 !
-        select case(iPEType)
-        case(1)
-          w = dot_product(kVector, rVec)
-          epsilonDotMu = dot_product(photonVector, rVec)
-          MValuesReal(i) = cos(w)*epsilonDotMu*dysonVal
-          MValuesImaginary(i) = -sin(w)*epsilonDotMu*dysonVal
+    select case(iPEType)
+    case(1)  ! Plane wave
+      w = dot_product(kVector, rVec)
+      epsilonDotR = dot_product(photonVector, rVec)
+      MValuesReal(i) = cos(w) * epsilonDotR * dysonVal
+      MValuesImaginary(i) = -sin(w) * epsilonDotR * dysonVal
 !
-        case(2)
-          if(r.gt.1.0d-10) then
-            thetaVal = acos(rVec(3)/r)
-            phiVal = atan2(rVec(2),rVec(1))
-          else
-            thetaVal = mqc_float(0)
-            phiVal = mqc_float(0)
-          endIf
+    case(2)  ! Spherical Bessel
+      if(r > MQC_Small) then
+        thetaVal = acos(rVec(3)/r)
+        phiVal = atan2(rVec(2),rVec(1))
+      else
+        thetaVal = 0.0_real64
+        phiVal = 0.0_real64
+      end if
 !
-!         Loop over l and m to build c_{lm}^{(mu)} terms
-          do l=0,lMax
-            j_l = sph_bessel_j(l,kMag*r)
-            do m=-l,l
-              Ylm = Ylm_complex(l,m,thetaVal,phiVal)
-              do mu=1,3
-                epsilonDotMu = rVec(mu)
-                muVal = j_l * Ylm * epsilonDotMu * dysonVal
+      epsilonDotR = dot_product(photonVector, rVec)
+!
+      do l = 0, lMax
+        j_l = sph_bessel_j(l, kMag * r)
+        do m = -l, l
+          Ylm = Ylm_complex(l, m, thetaVal, phiVal)
+          muVal = j_l * Ylm * epsilonDotR * dysonVal
 !$omp atomic
-                cLM(l,m,mu) = cLM(l,m,mu) + quadratureWeights(i)*muVal
-              endDo
-            endDo
-          endDo
-!
-        case default
-          call mqc_error('ERROR: Invalid iPEType in dysonMatrixElement1Angle.')
-        end select
+          cLM(l,m) = cLM(l,m) + quadratureWeights(i) * muVal
+        end do
       end do
+!
+    case default
+      call mqc_error('ERROR: Invalid iPEType in dysonMatrixElement1Angle.')
+    end select
+  end do
 !$omp end parallel do
 !
-      dysonNorm = dot_product(quadratureWeights,dysonNormTest)
+  dysonNorm = dot_product(quadratureWeights, dysonNormTest)
 !
-!     If we're working with partial waves, compute the normalized weights by
-!     angular momentum type.
+  if(iPEType == 2) then
 !
-      if(iPEType.eq.2) then
-        do l=0,lMax
-          W_l(l) = mqc_float(0)
-          do m=-l,l
-            do mu=1,3
-              W_l(l) = W_l(l) + abs(cLM(l,m,mu))**2
-            endDo
-          endDo
-        endDo
-        if(sum(W_l).gt.mqc_small) then
-          lWeights(0:lMax) = W_l / sum(W_l)
-        else
-          lWeights(0:lMax) = mqc_float(0)
-        endIf
-        MValuesReal = mqc_float(0)
-        MValuesImaginary = mqc_float(0)
+!   Compute l-weights and MSquared
 !
-!       Reconstruct dipole projection from cLM
+    do l = 0, lMax
+      W_l(l) = 0.0_real64
+      do m = -l, l
+        W_l(l) = W_l(l) + abs(cLM(l,m))**2
+      end do
+      write(*,*)' l,W_l(l) = ',l,W_l(l)
+    end do
 !
-        dipX = (0.0,0.0)
-        dipY = (0.0,0.0)
-        dipZ = (0.0,0.0)
-        do l=0,lMax
-          do m=-l,l
-            dipX = dipX + cLM(l,m,1)
-            dipY = dipY + cLM(l,m,2)
-            dipZ = dipZ + cLM(l,m,3)
-          endDo
-        endDo
+    if(sum(W_l) > MQC_Small) then
+      lWeights(0:lMax) = W_l / sum(W_l)
+    else
+      lWeights(0:lMax) = 0.0_real64
+    end if
 !
-        MSquared = abs( dipX*photonVector(1) +  &
-                        dipY*photonVector(2) +  &
-                        dipZ*photonVector(3) )**2
+    dipoleAmp = (0.0, 0.0)
+    do l = 0, lMax
+      do m = -l, l
+        dipoleAmp = dipoleAmp + cLM(l,m)
+      end do
+    end do
+    MSquared = abs(dipoleAmp)**2
 !
-      else
-        MSquared = dot_product(quadratureWeights,MValuesReal)**2 +  &
-                   dot_product(quadratureWeights,MValuesImaginary)**2
-        lWeights = mqc_float(-1)
-      endIf
+  else
+    MSquared = dot_product(quadratureWeights, MValuesReal)**2 +  &
+               dot_product(quadratureWeights, MValuesImaginary)**2
+    lWeights(0) = 1.0_real64
+    lWeights(1:lMax) = 0.0_real64
+  end if
 !
-      return
-      end subroutine dysonMatrixElement1Angle
+  return
+end subroutine dysonMatrixElement1Angle
 
 !
 !PROCEDURE dysonMatrixElementThetaList
@@ -637,6 +960,54 @@
 !
       return
       end subroutine dysonMatrixElementThetaList
+
+!
+!PROCEDURE generate_sph_grid
+      subroutine generate_sph_grid(nTheta,nPhi,thetaVals,phiVals,  &
+        weights)
+      implicit none
+      integer(kind=int64),intent(in)::nTheta,nPhi
+      real(real64),intent(out)::thetaVals(nTheta),phiVals(nPhi)
+      real(real64),intent(out)::weights(nTheta,nPhi)
+      integer::i,j
+      real(real64)::dtheta,dphi
+!
+!     Set dtheta and dphi.
+!
+      dtheta = pi/mqc_float(nTheta-1)
+      dphi   = mqc_float(2)*pi/mqc_float(nPhi)
+      write(*,*)
+      write(*,*)' Hrant - pi     = ',pi
+      write(*,*)' Hrant - nTheta = ',nTheta
+      write(*,*)' Hrant - nPhi   = ',nPhi
+      write(*,*)
+      write(*,*)' Hrant - dTheta = ',dTheta
+      write(*,*)' Hrant - dPhi   = ',dPhi
+      write(*,*)
+!
+!     Create theta grid...
+!
+      do i = 1,nTheta
+        thetaVals(i) = dtheta*mqc_float(i-1)
+      end do
+!
+!     Create phi grid...
+!
+      do j = 1,nPhi
+        phiVals(j) = dphi*mqc_float(j-1)
+      end do
+!
+!     Compute weights: sin(theta)*dtheta*dphi...
+!
+      do i = 1,nTheta
+        do j = 1,nPhi
+          weights(i,j) = sin(thetaVals(i))*dtheta*dphi
+        endDo
+      endDo
+!
+      return
+      end subroutine generate_sph_grid
+
 
 
       end module pad_mod
