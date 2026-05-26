@@ -21,9 +21,10 @@
 !              1 = sphere-grid lab-frame orientations
 !           9. number of lab-frame theta points (optional; default=5)
 !          10. number of lab-frame phi points (optional; default=8)
+!          11. number of chi points from 0 --> 2*pi (optional; default=36)
 !
 !
-!     Hrant P. Hratchian, 2025.
+!     Hrant P. Hratchian, 2025, 2026.
 !     hhratchian@umcerced.edu
 !     University of California, Merced
 !

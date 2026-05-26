@@ -90,7 +90,7 @@ make pad.exe
 ## Running
 
 ```sh
-./pad.exe FAF_FILE MO_INDEX PHOTON_EV BINDING_EV [N_THETA] [N_GRID] [I_PE_TYPE] [LAB_FRAME_TYPE] [N_LAB_THETA] [N_LAB_PHI]
+./pad.exe FAF_FILE MO_INDEX PHOTON_EV BINDING_EV [N_THETA] [N_GRID] [I_PE_TYPE] [LAB_FRAME_TYPE] [N_LAB_THETA] [N_LAB_PHI] [N_CHI]
 ```
 
 Arguments:
@@ -107,6 +107,7 @@ Arguments:
 | `LAB_FRAME_TYPE` | no | `0` | Lab-frame model flag. Use `0` for Cartesian or `1` for sphere-grid. |
 | `N_LAB_THETA` | no | `5` | Number of sphere-grid theta points when `LAB_FRAME_TYPE = 1`. |
 | `N_LAB_PHI` | no | `8` | Number of sphere-grid phi points when `LAB_FRAME_TYPE = 1`. |
+| `N_CHI` | no | `36` | Number of uniform chi points from `0` to `2*pi` used to rotate the PAD scan plane about each `epsilon`. The default gives `10` degree steps. |
 
 The program computes the photoelectron kinetic energy and plane-wave magnitude
 from the photon and binding energies:
@@ -146,6 +147,13 @@ Run the sphere-grid lab-frame model with a small orientation grid:
 ./pad.exe GTests/006.faf 1 1.100000 1.000000 5 101 0 1 5 8
 ```
 
+Run the sphere-grid lab-frame model with chi averaging about each polarization
+direction:
+
+```sh
+./pad.exe GTests/006.faf 1 1.100000 1.000000 5 101 0 1 5 8 8
+```
+
 ## Output
 
 For each lab-frame orientation, `pad.exe` prints:
@@ -155,15 +163,25 @@ For each lab-frame orientation, `pad.exe` prints:
 - The plane-wave magnitude, `k`, in atomic units.
 - The lab-frame model flag, number of lab-frame orientations, and orientation
   weight sum.
+- The chi quadrature size and chi-weight sum.
 - The electric-field polarization vector, `epsilon`.
-- The perpendicular vector defining the plane in which `k` is scanned.
+- The reference perpendicular vector used to define the chi-rotated scan
+  planes.
 - The theta grid and `I(theta)` values.
 - `I(0)`, `I(90)`, and beta from the parallel/perpendicular ratio.
 - A fitted beta value from the PAD shape.
 
 The summary table reports the integrated intensity and beta values for each
-orientation. It also reports weighted mean beta values and beta values computed
-from the weighted orientation-averaged PAD intensity curve.
+orientation. When `N_CHI > 1`, the per-orientation PAD and beta values are
+first averaged over chi for that `epsilon`. The summary also reports weighted
+mean beta values and beta values computed from the weighted
+orientation-averaged PAD intensity curve.
+
+Two different integrated-intensity summaries are now printed:
+
+- `theta-integrated intensity`: the PAD integrated only over `theta`
+- `solid-angle integrated intensity`: the PAD integrated with the full angular
+  measure `sin(theta) dtheta dchi`
 
 ## Programmatic Use
 
@@ -175,9 +193,9 @@ call runPADCalculation(faf,options,results)
 ```
 
 where `results` is a `pad_results` object containing the computed kinetic
-energy, `k`, theta grid, PAD intensities, integrated intensities, beta values,
-and lab-frame vectors. The command-line program `pad.f03` is now a thin wrapper
-around this driver.
+energy, `k`, theta and chi grids, PAD intensities, integrated intensities, beta
+values, solid-angle integrated intensities, and lab-frame vectors. The
+command-line program `pad.f03` is now a thin wrapper around this driver.
 
 The `pad_options%labFrameType` field controls how the lab-frame vectors are
 generated:
@@ -190,14 +208,14 @@ PAD_LAB_FRAMES_CUSTOM     ! user-supplied vector arrays
 
 For the sphere-grid option, set `nLabFrameTheta` and `nLabFramePhi`. For custom
 lab frames, fill `labEpsilonVector(3,n)`, `labKPlaneVector(3,n)`, and optionally
-`labFrameWeights(n)` and `labFrameLabels(n)`. The lower-level PAD loops only see
-the resulting vector arrays and weights, so additional rotational-averaging
-schemes can be added without changing the matrix-element code.
+`labFrameWeights(n)` and `labFrameLabels(n)`. The lab-frame generator supplies
+polarization directions, reference transverse vectors, and outer weights. The
+driver then performs a uniform periodic chi average about each `epsilon` using
+`nChi` points before combining the weighted `epsilon`-grid results.
 
 The sphere-grid model supplies surface-area weights for the sampled
-polarization directions. The current implementation averages over those
-directions and one associated perpendicular k-scan plane for each direction; it
-does not yet sample the full third Euler angle about each polarization vector.
+polarization directions. The chi quadrature supplies equal weights over
+`0 <= chi < 2*pi`.
 
 ## Interpreting Beta
 

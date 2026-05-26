@@ -22,6 +22,7 @@
         integer(kind=int64)::dysonMOIndex=1_int64
         integer(kind=int64)::nGridPointsTheta=5_int64
         integer(kind=int64)::nGridPointsM=101_int64
+        integer(kind=int64)::nChi=36_int64
         integer(kind=int64)::iPEType=0_int64
         integer(kind=int64)::lMax=6_int64
         integer(kind=int64)::nOMP=1_int64
@@ -43,14 +44,17 @@
       type pad_results
         integer(kind=int64)::nLabFrames=0_int64
         integer(kind=int64)::nTheta=0_int64
+        integer(kind=int64)::nChi=0_int64
         real(kind=real64)::photoelectronEnergyEV=0.0_real64
         real(kind=real64)::photoelectronEnergyHartree=0.0_real64
         real(kind=real64)::kMag=0.0_real64
         real(kind=real64)::dysonSelfOverlap=0.0_real64
         real(kind=real64)::labFrameWeightSum=0.0_real64
+        real(kind=real64)::chiWeightSum=0.0_real64
         real(kind=real64)::averageIntensity0=0.0_real64
         real(kind=real64)::averageIntensity90=0.0_real64
         real(kind=real64)::averageIntegratedIntensity=0.0_real64
+        real(kind=real64)::averageSolidAngleIntegratedIntensity=0.0_real64
         real(kind=real64)::averageBetaParaPerp=0.0_real64
         real(kind=real64)::averageBetaFit=0.0_real64
         real(kind=real64)::averageRSquared=0.0_real64
@@ -58,8 +62,12 @@
         real(kind=real64)::meanBetaFit=0.0_real64
         real(kind=real64),dimension(:),allocatable::theta
         real(kind=real64),dimension(:),allocatable::thetaWeights
+        real(kind=real64),dimension(:),allocatable::thetaSolidAngleWeights
+        real(kind=real64),dimension(:),allocatable::chi
+        real(kind=real64),dimension(:),allocatable::chiWeights
         real(kind=real64),dimension(:),allocatable::labFrameWeights
         real(kind=real64),dimension(:),allocatable::integratedIntensity
+        real(kind=real64),dimension(:),allocatable::solidAngleIntegratedIntensity
         real(kind=real64),dimension(:),allocatable::intensity0
         real(kind=real64),dimension(:),allocatable::intensity90
         real(kind=real64),dimension(:),allocatable::betaValsParaPerp
@@ -83,7 +91,7 @@
 !     options object and FAF filename.
 !
 !
-!     H. P. Hratchian, 2025.
+!     H. P. Hratchian, 2025, 2026.
 !
       implicit none
       type(pad_options),intent(out)::options
@@ -96,8 +104,8 @@
 !
       options = pad_options()
       nCommandLineArgs = command_argument_count()
-      if(nCommandLineArgs.lt.4.or.nCommandLineArgs.gt.10)  &
-        call mqc_error('PAD expects 4-10 command line arguments.')
+      if(nCommandLineArgs.lt.4.or.nCommandLineArgs.gt.11)  &
+        call mqc_error('PAD expects 4-11 command line arguments.')
       call get_command_argument(1,fafName)
       call mqc_get_command_argument_integer(2,options%dysonMOIndex)
       call mqc_get_command_argument_real(3,options%photonEnergyEV)
@@ -119,6 +127,9 @@
       endIf
       if(nCommandLineArgs.ge.10) then
         call mqc_get_command_argument_integer(10,options%nLabFramePhi)
+      endIf
+      if(nCommandLineArgs.ge.11) then
+        call mqc_get_command_argument_integer(11,options%nChi)
       endIf
 !
       return
@@ -163,21 +174,25 @@
 !
 !     This routine carries out the PAD calculation for a selected Dyson orbital
 !     from an already-loaded Gaussian FAF object. The molecule is kept fixed and
-!     the lab-frame polarization/k-plane vectors are varied.
+!     the lab-frame polarization vectors are varied. For each polarization
+!     direction, the scan plane can also be rotated uniformly about epsilon
+!     through a periodic chi quadrature.
 !
 !
-!     H. P. Hratchian, 2025.
+!     H. P. Hratchian, 2025, 2026.
 !
       implicit none
       type(mqc_gaussian_unformatted_matrix_file),intent(inout)::faf
       type(pad_options),intent(in)::options
       type(pad_results),intent(out)::results
 !
-      integer(kind=int64)::i,j,nIntPlanes
+      integer(kind=int64)::i,j,iChi,nIntPlanes
       real(kind=real64)::tStart1,tEnd1,stepSizeIntM,stepSizeTheta,  &
         thetaStart,MSquared0,MSquared90
-      real(kind=real64),dimension(3)::cartStart,cartEnd
-      real(kind=real64),dimension(:),allocatable::lWeights0,lWeights90
+      real(kind=real64),dimension(3)::cartStart,cartEnd,epsilonVec,  &
+        epsilonUnit,uBasis,vBasis,uChi
+      real(kind=real64),dimension(:),allocatable::lWeights0,lWeights90,  &
+        lWeights0Tmp,lWeights90Tmp
       real(kind=real64),dimension(:),allocatable::quadWeightsM,  &
         MSquaredList
       real(kind=real64),dimension(:,:),allocatable::quadGridM,moCoeffs
@@ -186,7 +201,7 @@
       type(MQC_Variable)::tmp,quadTmp
 !
  1100 format(/,1x,'Lab frame ',i4,': epsilon = (',f7.3,',',f7.3,',',f7.3,')',  &
-        '  k-plane vector = (',f7.3,',',f7.3,',',f7.3,')')
+        '  reference k-plane vector = (',f7.3,',',f7.3,',',f7.3,')')
  1200 format(1x,'Photoelectron model flag = ',i3)
  1210 format(1x,'Photon energy          = ',f12.6,' eV')
  1220 format(1x,'Electron binding energy= ',f12.6,' eV')
@@ -194,7 +209,8 @@
  1240 format(1x,'Photoelectron k        = ',f12.6,' a.u.')
  1250 format(1x,'Lab-frame model flag   = ',i3)
  1260 format(1x,'Lab-frame orientations = ',i8,3x,'weight sum = ',es14.6)
- 2000 format(1x,'Data for the ',A,' grid:',/,  &
+ 1270 format(1x,'Chi quadrature points  = ',i8,3x,'weight sum = ',es14.6)
+  2000 format(1x,'Data for the ',A,' grid:',/,  &
         3x,'nPoints = ',i15,' step size = ',f20.5)
  2010 format(1x,'Data for the ',A,' grid:',/,3x,'nPoints = ',i15)
  2500 format(/,1x,'Dyson orbital self-overlap = ',f12.8)
@@ -211,14 +227,16 @@
         31x,'Summary of PAD Calculation',/,  &
         34x,'(k = ',f10.6,' a.u.)',/,  &
         1x,87('='))
- 3510 format(1x,'Plane: ',A,'  |  epsilon: (',f5.2,',',f5.2,',',f5.2,  &
-        ')  |  Intensity = ',es14.6,/,  &
+  3510 format(1x,'Plane: ',A,'  |  epsilon: (',f5.2,',',f5.2,',',f5.2,  &
+        ')',/,18x,'theta-integrated intensity       = ',es14.6,/,  &
+        18x,'solid-angle integrated intensity = ',es14.6,/,  &
         18x,'beta(ratio) = ',f10.6,'  |  beta(fit) = ',f10.6,  &
         ' (R**2 = ',f8.5,')')
- 3520 format(1x,87('='))
- 3530 format(1x,'Weighted mean beta(ratio) = ',f10.6,/,  &
+  3520 format(1x,87('='))
+  3530 format(1x,'Weighted mean beta(ratio) = ',f10.6,/,  &
         1x,'Weighted mean beta(fit)   = ',f10.6)
- 3540 format(1x,'Averaged integrated intensity = ',es14.6,/,  &
+ 3540 format(1x,'Averaged theta-integrated intensity = ',es14.6,/,  &
+        1x,'Averaged solid-angle integrated intensity = ',es14.6,/,  &
         1x,'Beta from averaged PAD(ratio) = ',f10.6,/,  &
         1x,'Beta from averaged PAD(fit)   = ',f10.6,  &
         ' (R**2 = ',f8.5,')',/)
@@ -232,6 +250,8 @@
         call mqc_error('PAD: nGridPointsTheta must be at least 2.')
       if(options%nGridPointsM.lt.2)  &
         call mqc_error('PAD: nGridPointsM must be at least 2.')
+      if(options%nChi.lt.1)  &
+        call mqc_error('PAD: nChi must be positive.')
       if(options%iPEType.lt.0.or.options%iPEType.gt.2)  &
         call mqc_error('PAD: invalid photoelectron model flag.')
       if(options%lMax.lt.0)  &
@@ -268,15 +288,25 @@
       endIf
       results%nLabFrames = nIntPlanes
       results%nTheta = options%nGridPointsTheta
+      results%nChi = options%nChi
+      call buildChiQuadrature(results%chi,results%chiWeights,results%nChi)
+      results%chiWeightSum = SUM(results%chiWeights)
+      if(results%chiWeightSum.le.mqc_small)  &
+        call mqc_error('PAD: chi quadrature weights sum to zero.')
+      if(options%printResults) write(iOut,1270) results%nChi,  &
+        results%chiWeightSum
       Allocate(results%integratedIntensity(nIntPlanes),  &
+        results%solidAngleIntegratedIntensity(nIntPlanes),  &
         results%intensity0(nIntPlanes),results%intensity90(nIntPlanes),  &
         results%betaValsParaPerp(nIntPlanes),  &
         results%betaValsFit(nIntPlanes),results%rSquared(nIntPlanes),  &
         results%intensityTheta(options%nGridPointsTheta,nIntPlanes),  &
         results%averageIntensityTheta(options%nGridPointsTheta),  &
         results%theta(options%nGridPointsTheta),  &
-        results%thetaWeights(options%nGridPointsTheta))
+        results%thetaWeights(options%nGridPointsTheta),  &
+        results%thetaSolidAngleWeights(options%nGridPointsTheta))
       results%integratedIntensity = mqc_float(0)
+      results%solidAngleIntegratedIntensity = mqc_float(0)
       results%intensity0 = mqc_float(0)
       results%intensity90 = mqc_float(0)
       results%betaValsParaPerp = mqc_float(0)
@@ -331,6 +361,7 @@
       stepSizeTheta = Pi/mqc_float(options%nGridPointsTheta-1)
       call setup_quadrature_trapezoid1d(options%nGridPointsTheta,  &
         stepSizeTheta,thetaStart,results%theta,results%thetaWeights)
+      results%thetaSolidAngleWeights = sin(results%theta)*results%thetaWeights
       if(options%printResults) write(iOut,2000)  &
         'theta',options%nGridPointsTheta,stepSizeTheta
       if(options%printResults) flush(iOut)
@@ -347,47 +378,82 @@
 !
 !     Evaluate the PAD for each lab-frame orientation.
 !
-      Allocate(lWeights0(0:options%lMax),lWeights90(0:options%lMax))
+      Allocate(lWeights0(0:options%lMax),lWeights90(0:options%lMax),  &
+        lWeights0Tmp(0:options%lMax),lWeights90Tmp(0:options%lMax),  &
+        MSquaredList(options%nGridPointsTheta))
       do i = 1,nIntPlanes
+        call buildTransverseBasis(results%epsilonVector(:,i),  &
+          results%kPlaneVector(:,i),epsilonUnit,uBasis,vBasis)
+        results%epsilonVector(:,i) = epsilonUnit
+        results%kPlaneVector(:,i) = uBasis
         if(options%printResults) write(iOut,1100) i,  &
           results%epsilonVector(:,i),results%kPlaneVector(:,i)
-        lWeights0 = -mqc_float(1)
-        lWeights90 = -mqc_float(1)
+        results%intensityTheta(:,i) = mqc_float(0)
+        results%intensity0(i) = mqc_float(0)
+        results%intensity90(i) = mqc_float(0)
+        lWeights0 = mqc_float(0)
+        lWeights90 = mqc_float(0)
         call CPU_TIME(tStart1)
 !
-        if(options%iPEType.eq.0) then
-          MSquared0 = dysonPlaneWaveMatrixElementSquared(mqc_float(0),  &
-            results%kMag,results%epsilonVector(:,i),  &
-            results%kPlaneVector(:,i),moCoeffs(:,options%dysonMOIndex),  &
-            basisSet,quadGridM,quadWeightsM)
-          MSquared90 = dysonPlaneWaveMatrixElementSquared(Pi/mqc_float(2),  &
-            results%kMag,results%epsilonVector(:,i),  &
-            results%kPlaneVector(:,i),moCoeffs(:,options%dysonMOIndex),  &
-            basisSet,quadGridM,quadWeightsM)
-          MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
-            results%theta,results%kMag,results%epsilonVector(:,i),  &
-            results%kPlaneVector(:,i),moCoeffs(:,options%dysonMOIndex),  &
-            basisSet,quadGridM,quadWeightsM)
-        else
-          call dysonMatrixElement1Angle(options%iPEType,options%lMax,  &
-            mqc_float(0),results%kMag,results%epsilonVector(:,i),  &
-            results%kPlaneVector(:,i),moCoeffs(:,options%dysonMOIndex),  &
-            basisSet,quadGridM,quadWeightsM,MSquared0,lWeights0)
-          call dysonMatrixElement1Angle(options%iPEType,options%lMax,  &
-            Pi/mqc_float(2),results%kMag,results%epsilonVector(:,i),  &
-            results%kPlaneVector(:,i),moCoeffs(:,options%dysonMOIndex),  &
-            basisSet,quadGridM,quadWeightsM,MSquared90,lWeights90)
-          if(Allocated(MSquaredList)) DeAllocate(MSquaredList)
-          Allocate(MSquaredList(options%nGridPointsTheta))
-          call dysonMatrixElementThetaList(options%iPEType,options%lMax,  &
-            results%theta,results%kMag,results%epsilonVector(:,i),  &
-            results%kPlaneVector(:,i),moCoeffs(:,options%dysonMOIndex),  &
-            basisSet,quadGridM,quadWeightsM,MSquaredList)
+        do iChi = 1,results%nChi
+          epsilonVec = results%epsilonVector(:,i)
+          uChi = cos(results%chi(iChi))*uBasis+sin(results%chi(iChi))*vBasis
+          call mqc_normalizeVector(uChi)
+          if(options%iPEType.eq.0) then
+            MSquared0 = dysonPlaneWaveMatrixElementSquared(mqc_float(0),  &
+              results%kMag,epsilonVec,uChi,  &
+              moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
+              quadWeightsM)
+            MSquared90 = dysonPlaneWaveMatrixElementSquared(Pi/mqc_float(2),  &
+              results%kMag,epsilonVec,uChi,  &
+              moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
+              quadWeightsM)
+            MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
+              results%theta,results%kMag,epsilonVec,uChi,  &
+              moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
+              quadWeightsM)
+          else
+            call dysonMatrixElement1Angle(options%iPEType,options%lMax,  &
+              mqc_float(0),results%kMag,epsilonVec,uChi,  &
+              moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
+              quadWeightsM,MSquared0,lWeights0Tmp)
+            call dysonMatrixElement1Angle(options%iPEType,options%lMax,  &
+              Pi/mqc_float(2),results%kMag,epsilonVec,uChi,  &
+              moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
+              quadWeightsM,MSquared90,lWeights90Tmp)
+            call dysonMatrixElementThetaList(options%iPEType,options%lMax,  &
+              results%theta,results%kMag,epsilonVec,uChi,  &
+              moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
+              quadWeightsM,MSquaredList)
+            if(options%iPEType.eq.2) then
+              lWeights0 = lWeights0+results%chiWeights(iChi)*lWeights0Tmp
+              lWeights90 = lWeights90+results%chiWeights(iChi)*lWeights90Tmp
+            endIf
+          endIf
+          results%intensityTheta(:,i) = results%intensityTheta(:,i)+  &
+            results%chiWeights(iChi)*MSquaredList
+          results%intensity0(i) = results%intensity0(i)+  &
+            results%chiWeights(iChi)*MSquared0
+          results%intensity90(i) = results%intensity90(i)+  &
+            results%chiWeights(iChi)*MSquared90
+        endDo
+        results%intensityTheta(:,i) = results%intensityTheta(:,i)/  &
+          results%chiWeightSum
+        results%intensity0(i) = results%intensity0(i)/results%chiWeightSum
+        results%intensity90(i) = results%intensity90(i)/results%chiWeightSum
+        if(options%iPEType.eq.2) then
+          lWeights0 = lWeights0/results%chiWeightSum
+          lWeights90 = lWeights90/results%chiWeightSum
         endIf
 !
         call CPU_TIME(tEnd1)
-        if(options%printResults) write(iOut,8998)  &
-          'MSquared(theta) list',tEnd1-tStart1
+        if(options%printResults) then
+          if(results%nChi.gt.1) then
+            write(iOut,8998) 'chi-averaged MSquared(theta) list',tEnd1-tStart1
+          else
+            write(iOut,8998) 'MSquared(theta) list',tEnd1-tStart1
+          endIf
+        endIf
         if(options%iPEType.eq.2.and.options%printResults) then
           write(iOut,3200) '0 ',lWeights0
           write(iOut,3200) '90',lWeights90
@@ -396,22 +462,24 @@
 !       Compute beta using both the parallel/perpendicular ratio and the
 !       least-squares fit to the PAD shape.
 !
-        results%intensityTheta(:,i) = MSquaredList
-        results%intensity0(i) = MSquared0
-        results%intensity90(i) = MSquared90
-        call betaLeastSquares(MSquaredList,results%theta,  &
+        call betaLeastSquares(results%intensityTheta(:,i),results%theta,  &
           results%betaValsFit(i),results%rSquared(i))
         results%integratedIntensity(i) =  &
-          dot_product(MSquaredList,results%thetaWeights)
-        results%betaValsParaPerp(i) = betaParaPerp(MSquared0,MSquared90)
+          dot_product(results%intensityTheta(:,i),results%thetaWeights)
+        results%solidAngleIntegratedIntensity(i) = results%chiWeightSum*  &
+          dot_product(results%intensityTheta(:,i),  &
+          results%thetaSolidAngleWeights)
+        results%betaValsParaPerp(i) = betaParaPerp(results%intensity0(i),  &
+          results%intensity90(i))
 !
         if(options%printResults.and.options%printThetaTable) then
           write(iOut,3000) results%kMag
           do j = 1,options%nGridPointsTheta
-            write(iOut,3010) results%theta(j),MSquaredList(j)
+            write(iOut,3010) results%theta(j),results%intensityTheta(j,i)
           endDo
           write(iOut,3020)
-          write(iOut,3100) MSquared0,MSquared90,results%betaValsParaPerp(i)
+          write(iOut,3100) results%intensity0(i),results%intensity90(i),  &
+            results%betaValsParaPerp(i)
           flush(iOut)
         endIf
       endDo
@@ -430,6 +498,9 @@
         results%intensity90)/results%labFrameWeightSum
       results%averageIntegratedIntensity =  &
         dot_product(results%averageIntensityTheta,results%thetaWeights)
+      results%averageSolidAngleIntegratedIntensity = results%chiWeightSum*  &
+        dot_product(results%averageIntensityTheta,  &
+        results%thetaSolidAngleWeights)
       results%averageBetaParaPerp = betaParaPerp(results%averageIntensity0,  &
         results%averageIntensity90)
       call betaLeastSquares(results%averageIntensityTheta,results%theta,  &
@@ -446,12 +517,14 @@
         do i = 1,nIntPlanes
           write(iOut,3510) TRIM(results%intPlaneLabels(i)),  &
             results%epsilonVector(:,i),results%integratedIntensity(i),  &
+            results%solidAngleIntegratedIntensity(i),  &
             results%betaValsParaPerp(i),results%betaValsFit(i),  &
             results%rSquared(i)
         endDo
         write(iOut,3520)
         write(iOut,3530) results%meanBetaParaPerp,results%meanBetaFit
         write(iOut,3540) results%averageIntegratedIntensity,  &
+          results%averageSolidAngleIntegratedIntensity,  &
           results%averageBetaParaPerp,results%averageBetaFit,  &
           results%averageRSquared
       endIf
@@ -464,12 +537,13 @@
       subroutine buildPADLabFrames(options,epsilonVectors,kPlaneVectors,  &
         planeLabels,labFrameWeights)
 !
-!     This routine builds the lab-frame polarization and k-plane vector arrays
-!     requested in the PAD options object. The calculation driver only loops
-!     over these arrays and does not need to know how they were generated.
+!     This routine builds the lab-frame polarization and reference k-plane
+!     vector arrays requested in the PAD options object. The calculation driver
+!     only loops over these arrays and does not need to know how they were
+!     generated.
 !
 !
-!     H. P. Hratchian, 2025.
+!     H. P. Hratchian, 2025, 2026.
 !
       implicit none
       type(pad_options),intent(in)::options
@@ -545,11 +619,11 @@
 !
 !     Build the default fixed-orientation lab-frame set. The molecule stays in
 !     the input molecular frame; each column gives a lab electric-field
-!     polarization vector and one perpendicular vector used to define the
-!     k-vector scan plane.
+!     polarization vector and one perpendicular reference vector used to define
+!     the chi-rotated k-vector scan plane.
 !
 !
-!     H. P. Hratchian, 2025.
+!     H. P. Hratchian, 2025, 2026.
 !
       implicit none
       real(kind=real64),dimension(:,:),allocatable,intent(out)::  &
@@ -584,10 +658,11 @@
 !
 !     This routine builds a lab-frame vector set from points on the unit sphere.
 !     The sphere points are used as electric-field polarization vectors, and the
-!     associated orthogonal vectors define the k-vector scan planes.
+!     associated orthogonal vectors define reference directions for the
+!     chi-rotated k-vector scan planes.
 !
 !
-!     H. P. Hratchian, 2025.
+!     H. P. Hratchian, 2025, 2026.
 !
       implicit none
       real(kind=real64),dimension(:,:),allocatable,intent(out)::  &
@@ -613,6 +688,94 @@
 !
       return
       end subroutine buildSphereLabFrames
+
+
+!PROCEDURE buildChiQuadrature
+      subroutine buildChiQuadrature(chiVals,chiWeights,nChi)
+!
+!     This routine builds a periodic uniform quadrature over chi from 0 to
+!     2*pi. The point at 2*pi is omitted because it is equivalent to the point
+!     at 0 for periodic sampling.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      integer(kind=int64),intent(in)::nChi
+      real(kind=real64),dimension(:),allocatable,intent(out)::chiVals,  &
+        chiWeights
+!
+      integer(kind=int64)::i
+      real(kind=real64)::chiStep
+!
+      if(nChi.lt.1) call mqc_error('buildChiQuadrature: nChi must be positive.')
+      chiStep = mqc_float(2)*Pi/mqc_float(nChi)
+      Allocate(chiVals(nChi),chiWeights(nChi))
+      do i = 1,nChi
+        chiVals(i) = mqc_float(i-1)*chiStep
+        chiWeights(i) = chiStep
+      endDo
+!
+      return
+      end subroutine buildChiQuadrature
+
+
+!PROCEDURE buildTransverseBasis
+      subroutine buildTransverseBasis(epsilonVector,kPlaneReference,  &
+        epsilonUnit,uBasis,vBasis)
+!
+!     This routine normalizes the input polarization vector and constructs an
+!     orthonormal transverse basis around it. The input reference k-plane vector
+!     is projected into the transverse space when possible and is otherwise
+!     replaced by a simple Cartesian fallback direction.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      real(kind=real64),dimension(3),intent(in)::epsilonVector,  &
+        kPlaneReference
+      real(kind=real64),dimension(3),intent(out)::epsilonUnit,uBasis,vBasis
+!
+      real(kind=real64),dimension(3)::fallbackVector
+!
+      epsilonUnit = epsilonVector
+      if(dot_product(epsilonUnit,epsilonUnit).le.mqc_small)  &
+        call mqc_error('buildTransverseBasis: epsilon vector has zero norm.')
+      call mqc_normalizeVector(epsilonUnit)
+!
+!     Start from the supplied reference vector and project out any component
+!     parallel to epsilon.
+!
+      uBasis = kPlaneReference-dot_product(kPlaneReference,epsilonUnit)*  &
+        epsilonUnit
+      if(dot_product(uBasis,uBasis).le.mqc_small) then
+        if(abs(epsilonUnit(1)).le.abs(epsilonUnit(2)).and.  &
+          abs(epsilonUnit(1)).le.abs(epsilonUnit(3))) then
+          fallbackVector = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
+        elseIf(abs(epsilonUnit(2)).le.abs(epsilonUnit(3))) then
+          fallbackVector = [ mqc_float(0),mqc_float(1),mqc_float(0) ]
+        else
+          fallbackVector = [ mqc_float(0),mqc_float(0),mqc_float(1) ]
+        endIf
+        uBasis = fallbackVector-dot_product(fallbackVector,epsilonUnit)*  &
+          epsilonUnit
+      endIf
+      if(dot_product(uBasis,uBasis).le.mqc_small)  &
+        call mqc_error('buildTransverseBasis: could not form transverse basis.')
+      call mqc_normalizeVector(uBasis)
+!
+!     Complete the right-handed transverse basis and re-orthogonalize uBasis.
+!
+      vBasis = mqc_crossProduct3D_real(epsilonUnit,uBasis)
+      if(dot_product(vBasis,vBasis).le.mqc_small)  &
+        call mqc_error('buildTransverseBasis: degenerate transverse basis.')
+      call mqc_normalizeVector(vBasis)
+      uBasis = mqc_crossProduct3D_real(vBasis,epsilonUnit)
+      call mqc_normalizeVector(uBasis)
+!
+      return
+      end subroutine buildTransverseBasis
 
 
 
