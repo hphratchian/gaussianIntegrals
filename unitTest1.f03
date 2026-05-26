@@ -1,4 +1,19 @@
       program unitTest1
+!
+!     This program tests the spherical integration and helper routines used in
+!     PAD. In particular, it checks the spherical quadrature normalization used
+!     with spherical harmonics and the limiting values of the spherical Bessel
+!     functions.
+!
+!     Command line arguments:
+!           No command line arguments are required.
+!
+!     Usage:
+!           ./unitTest1.exe
+!
+!
+!     H. P. Hratchian, 2025.
+!
       use pad_mod
       implicit none
       integer(kind=int64),parameter::nOMP=1,nTheta=181,nPhi=361,l=2,m=0

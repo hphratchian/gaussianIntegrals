@@ -90,7 +90,7 @@ make pad.exe
 ## Running
 
 ```sh
-./pad.exe FAF_FILE MO_INDEX PHOTON_EV BINDING_EV [N_THETA] [N_GRID] [I_PE_TYPE]
+./pad.exe FAF_FILE MO_INDEX PHOTON_EV BINDING_EV [N_THETA] [N_GRID] [I_PE_TYPE] [LAB_FRAME_TYPE] [N_LAB_THETA] [N_LAB_PHI]
 ```
 
 Arguments:
@@ -104,6 +104,9 @@ Arguments:
 | `N_THETA` | no | `5` | Number of theta values from `0` to `pi`. |
 | `N_GRID` | no | `101` | Cartesian grid points per axis if FAF grid is absent. |
 | `I_PE_TYPE` | no | `0` | Photoelectron model flag. Use `0` for production. |
+| `LAB_FRAME_TYPE` | no | `0` | Lab-frame model flag. Use `0` for Cartesian or `1` for sphere-grid. |
+| `N_LAB_THETA` | no | `5` | Number of sphere-grid theta points when `LAB_FRAME_TYPE = 1`. |
+| `N_LAB_PHI` | no | `8` | Number of sphere-grid phi points when `LAB_FRAME_TYPE = 1`. |
 
 The program computes the photoelectron kinetic energy and plane-wave magnitude
 from the photon and binding energies:
@@ -137,6 +140,12 @@ Run the experimental partial-wave path:
 ./pad.exe GTests/001.faf 1 1.100000 1.000000 5 21 2
 ```
 
+Run the sphere-grid lab-frame model with a small orientation grid:
+
+```sh
+./pad.exe GTests/006.faf 1 1.100000 1.000000 5 101 0 1 5 8
+```
+
 ## Output
 
 For each lab-frame orientation, `pad.exe` prints:
@@ -144,6 +153,8 @@ For each lab-frame orientation, `pad.exe` prints:
 - The photoelectron model flag.
 - The photon, binding, and resulting kinetic energies.
 - The plane-wave magnitude, `k`, in atomic units.
+- The lab-frame model flag, number of lab-frame orientations, and orientation
+  weight sum.
 - The electric-field polarization vector, `epsilon`.
 - The perpendicular vector defining the plane in which `k` is scanned.
 - The theta grid and `I(theta)` values.
@@ -151,7 +162,8 @@ For each lab-frame orientation, `pad.exe` prints:
 - A fitted beta value from the PAD shape.
 
 The summary table reports the integrated intensity and beta values for each
-orientation.
+orientation. It also reports weighted mean beta values and beta values computed
+from the weighted orientation-averaged PAD intensity curve.
 
 ## Programmatic Use
 
@@ -178,9 +190,14 @@ PAD_LAB_FRAMES_CUSTOM     ! user-supplied vector arrays
 
 For the sphere-grid option, set `nLabFrameTheta` and `nLabFramePhi`. For custom
 lab frames, fill `labEpsilonVector(3,n)`, `labKPlaneVector(3,n)`, and optionally
-`labFrameLabels(n)`. The lower-level PAD loops only see the resulting vector
-arrays, so additional rotational-averaging schemes can be added without
-changing the matrix-element code.
+`labFrameWeights(n)` and `labFrameLabels(n)`. The lower-level PAD loops only see
+the resulting vector arrays and weights, so additional rotational-averaging
+schemes can be added without changing the matrix-element code.
+
+The sphere-grid model supplies surface-area weights for the sampled
+polarization directions. The current implementation averages over those
+directions and one associated perpendicular k-scan plane for each direction; it
+does not yet sample the full third Euler angle about each polarization vector.
 
 ## Interpreting Beta
 

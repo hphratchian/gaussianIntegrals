@@ -34,6 +34,7 @@
         real(kind=real64)::bindingEnergyEV=0.0_real64
         real(kind=real64),dimension(:,:),allocatable::labEpsilonVector
         real(kind=real64),dimension(:,:),allocatable::labKPlaneVector
+        real(kind=real64),dimension(:),allocatable::labFrameWeights
         character(len=8),dimension(:),allocatable::labFrameLabels
       end type pad_options
 !
@@ -46,12 +47,25 @@
         real(kind=real64)::photoelectronEnergyHartree=0.0_real64
         real(kind=real64)::kMag=0.0_real64
         real(kind=real64)::dysonSelfOverlap=0.0_real64
+        real(kind=real64)::labFrameWeightSum=0.0_real64
+        real(kind=real64)::averageIntensity0=0.0_real64
+        real(kind=real64)::averageIntensity90=0.0_real64
+        real(kind=real64)::averageIntegratedIntensity=0.0_real64
+        real(kind=real64)::averageBetaParaPerp=0.0_real64
+        real(kind=real64)::averageBetaFit=0.0_real64
+        real(kind=real64)::averageRSquared=0.0_real64
+        real(kind=real64)::meanBetaParaPerp=0.0_real64
+        real(kind=real64)::meanBetaFit=0.0_real64
         real(kind=real64),dimension(:),allocatable::theta
         real(kind=real64),dimension(:),allocatable::thetaWeights
+        real(kind=real64),dimension(:),allocatable::labFrameWeights
         real(kind=real64),dimension(:),allocatable::integratedIntensity
+        real(kind=real64),dimension(:),allocatable::intensity0
+        real(kind=real64),dimension(:),allocatable::intensity90
         real(kind=real64),dimension(:),allocatable::betaValsParaPerp
         real(kind=real64),dimension(:),allocatable::betaValsFit
         real(kind=real64),dimension(:),allocatable::rSquared
+        real(kind=real64),dimension(:),allocatable::averageIntensityTheta
         real(kind=real64),dimension(:,:),allocatable::intensityTheta
         real(kind=real64),dimension(:,:),allocatable::epsilonVector
         real(kind=real64),dimension(:,:),allocatable::kPlaneVector
@@ -82,8 +96,8 @@
 !
       options = pad_options()
       nCommandLineArgs = command_argument_count()
-      if(nCommandLineArgs.lt.4.or.nCommandLineArgs.gt.7)  &
-        call mqc_error('PAD expects 4-7 command line arguments.')
+      if(nCommandLineArgs.lt.4.or.nCommandLineArgs.gt.10)  &
+        call mqc_error('PAD expects 4-10 command line arguments.')
       call get_command_argument(1,fafName)
       call mqc_get_command_argument_integer(2,options%dysonMOIndex)
       call mqc_get_command_argument_real(3,options%photonEnergyEV)
@@ -96,6 +110,15 @@
       endIf
       if(nCommandLineArgs.ge.7) then
         call mqc_get_command_argument_integer(7,options%iPEType)
+      endIf
+      if(nCommandLineArgs.ge.8) then
+        call mqc_get_command_argument_integer(8,options%labFrameType)
+      endIf
+      if(nCommandLineArgs.ge.9) then
+        call mqc_get_command_argument_integer(9,options%nLabFrameTheta)
+      endIf
+      if(nCommandLineArgs.ge.10) then
+        call mqc_get_command_argument_integer(10,options%nLabFramePhi)
       endIf
 !
       return
@@ -169,6 +192,8 @@
  1220 format(1x,'Electron binding energy= ',f12.6,' eV')
  1230 format(1x,'Electron kinetic energy= ',f12.6,' eV = ',es14.6,' Eh')
  1240 format(1x,'Photoelectron k        = ',f12.6,' a.u.')
+ 1250 format(1x,'Lab-frame model flag   = ',i3)
+ 1260 format(1x,'Lab-frame orientations = ',i8,3x,'weight sum = ',es14.6)
  2000 format(1x,'Data for the ',A,' grid:',/,  &
         3x,'nPoints = ',i15,' step size = ',f20.5)
  2010 format(1x,'Data for the ',A,' grid:',/,3x,'nPoints = ',i15)
@@ -191,8 +216,12 @@
         18x,'beta(ratio) = ',f10.6,'  |  beta(fit) = ',f10.6,  &
         ' (R**2 = ',f8.5,')')
  3520 format(1x,87('='))
- 3530 format(1x,'Average Beta (ratio) = ',f10.6,/,  &
-        1x,'Average Beta (fit)   = ',f10.6,/)
+ 3530 format(1x,'Weighted mean beta(ratio) = ',f10.6,/,  &
+        1x,'Weighted mean beta(fit)   = ',f10.6)
+ 3540 format(1x,'Averaged integrated intensity = ',es14.6,/,  &
+        1x,'Beta from averaged PAD(ratio) = ',f10.6,/,  &
+        1x,'Beta from averaged PAD(fit)   = ',f10.6,  &
+        ' (R**2 = ',f8.5,')',/)
  8998 format(1x,'Time for ',A,': ',f15.1,' s')
 !
 !     Validate user/model options and compute the photoelectron kinematics.
@@ -207,6 +236,10 @@
         call mqc_error('PAD: invalid photoelectron model flag.')
       if(options%lMax.lt.0)  &
         call mqc_error('PAD: lMax must be nonnegative.')
+      if(options%nLabFrameTheta.lt.2)  &
+        call mqc_error('PAD: nLabFrameTheta must be at least 2.')
+      if(options%nLabFramePhi.lt.1)  &
+        call mqc_error('PAD: nLabFramePhi must be positive.')
       call padComputePhotoelectronEnergyAndK(options,  &
         results%photoelectronEnergyEV,results%photoelectronEnergyHartree,  &
         results%kMag)
@@ -223,21 +256,34 @@
 !     relative to a fixed molecular frame.
 !
       call buildPADLabFrames(options,results%epsilonVector,  &
-        results%kPlaneVector,results%intPlaneLabels)
+        results%kPlaneVector,results%intPlaneLabels,  &
+        results%labFrameWeights)
       nIntPlanes = Size(results%epsilonVector,2)
+      results%labFrameWeightSum = SUM(results%labFrameWeights)
+      if(results%labFrameWeightSum.le.mqc_small)  &
+        call mqc_error('PAD: lab-frame weights sum to zero.')
+      if(options%printResults) then
+        write(iOut,1250) options%labFrameType
+        write(iOut,1260) nIntPlanes,results%labFrameWeightSum
+      endIf
       results%nLabFrames = nIntPlanes
       results%nTheta = options%nGridPointsTheta
       Allocate(results%integratedIntensity(nIntPlanes),  &
+        results%intensity0(nIntPlanes),results%intensity90(nIntPlanes),  &
         results%betaValsParaPerp(nIntPlanes),  &
         results%betaValsFit(nIntPlanes),results%rSquared(nIntPlanes),  &
         results%intensityTheta(options%nGridPointsTheta,nIntPlanes),  &
+        results%averageIntensityTheta(options%nGridPointsTheta),  &
         results%theta(options%nGridPointsTheta),  &
         results%thetaWeights(options%nGridPointsTheta))
       results%integratedIntensity = mqc_float(0)
+      results%intensity0 = mqc_float(0)
+      results%intensity90 = mqc_float(0)
       results%betaValsParaPerp = mqc_float(0)
       results%betaValsFit = mqc_float(0)
       results%rSquared = mqc_float(0)
       results%intensityTheta = mqc_float(0)
+      results%averageIntensityTheta = mqc_float(0)
 !
 !     Read the basis set and MO coefficients from the FAF.
 !
@@ -351,6 +397,8 @@
 !       least-squares fit to the PAD shape.
 !
         results%intensityTheta(:,i) = MSquaredList
+        results%intensity0(i) = MSquared0
+        results%intensity90(i) = MSquared90
         call betaLeastSquares(MSquaredList,results%theta,  &
           results%betaValsFit(i),results%rSquared(i))
         results%integratedIntensity(i) =  &
@@ -368,6 +416,29 @@
         endIf
       endDo
 !
+!     Build the weighted orientation-averaged PAD and associated beta values.
+!
+      do i = 1,nIntPlanes
+        results%averageIntensityTheta = results%averageIntensityTheta +  &
+          results%labFrameWeights(i)*results%intensityTheta(:,i)
+      endDo
+      results%averageIntensityTheta = results%averageIntensityTheta/  &
+        results%labFrameWeightSum
+      results%averageIntensity0 = dot_product(results%labFrameWeights,  &
+        results%intensity0)/results%labFrameWeightSum
+      results%averageIntensity90 = dot_product(results%labFrameWeights,  &
+        results%intensity90)/results%labFrameWeightSum
+      results%averageIntegratedIntensity =  &
+        dot_product(results%averageIntensityTheta,results%thetaWeights)
+      results%averageBetaParaPerp = betaParaPerp(results%averageIntensity0,  &
+        results%averageIntensity90)
+      call betaLeastSquares(results%averageIntensityTheta,results%theta,  &
+        results%averageBetaFit,results%averageRSquared)
+      results%meanBetaParaPerp = dot_product(results%labFrameWeights,  &
+        results%betaValsParaPerp)/results%labFrameWeightSum
+      results%meanBetaFit = dot_product(results%labFrameWeights,  &
+        results%betaValsFit)/results%labFrameWeightSum
+!
 !     Print the summary.
 !
       if(options%printResults) then
@@ -379,9 +450,10 @@
             results%rSquared(i)
         endDo
         write(iOut,3520)
-        write(iOut,3530)  &
-          SUM(results%betaValsParaPerp)/mqc_float(nIntPlanes),  &
-          SUM(results%betaValsFit)/mqc_float(nIntPlanes)
+        write(iOut,3530) results%meanBetaParaPerp,results%meanBetaFit
+        write(iOut,3540) results%averageIntegratedIntensity,  &
+          results%averageBetaParaPerp,results%averageBetaFit,  &
+          results%averageRSquared
       endIf
 !
       return
@@ -390,7 +462,7 @@
 
 !PROCEDURE buildPADLabFrames
       subroutine buildPADLabFrames(options,epsilonVectors,kPlaneVectors,  &
-        planeLabels)
+        planeLabels,labFrameWeights)
 !
 !     This routine builds the lab-frame polarization and k-plane vector arrays
 !     requested in the PAD options object. The calculation driver only loops
@@ -403,6 +475,8 @@
       type(pad_options),intent(in)::options
       real(kind=real64),dimension(:,:),allocatable,intent(out)::  &
         epsilonVectors,kPlaneVectors
+      real(kind=real64),dimension(:),allocatable,intent(out)::  &
+        labFrameWeights
       character(len=8),dimension(:),allocatable,intent(out)::planeLabels
 !
       integer(kind=int64)::i,nLabFrames
@@ -412,11 +486,12 @@
       select case(options%labFrameType)
       case(PAD_LAB_FRAMES_CARTESIAN)
         call buildCartesianLabFrames(epsilonVectors,kPlaneVectors,  &
-          planeLabels)
+          planeLabels,labFrameWeights)
 !
       case(PAD_LAB_FRAMES_SPHERE)
         call buildSphereLabFrames(epsilonVectors,kPlaneVectors,  &
-          planeLabels,options%nLabFrameTheta,options%nLabFramePhi)
+          planeLabels,labFrameWeights,options%nLabFrameTheta,  &
+          options%nLabFramePhi)
 !
       case(PAD_LAB_FRAMES_CUSTOM)
         if(.not.Allocated(options%labEpsilonVector))  &
@@ -445,6 +520,16 @@
             write(planeLabels(i),'("c",i7.7)') i
           endDo
         endIf
+        if(Allocated(options%labFrameWeights)) then
+          if(Size(options%labFrameWeights).ne.nLabFrames)  &
+            call mqc_error('buildPADLabFrames: custom weight count differs.')
+          if(MINVAL(options%labFrameWeights).lt.mqc_float(0))  &
+            call mqc_error('buildPADLabFrames: negative custom weight.')
+          labFrameWeights = options%labFrameWeights
+        else
+          Allocate(labFrameWeights(nLabFrames))
+          labFrameWeights = mqc_float(1)
+        endIf
 !
       case default
         call mqc_error('buildPADLabFrames: invalid lab-frame type.')
@@ -456,7 +541,7 @@
 
 !PROCEDURE buildCartesianLabFrames
       subroutine buildCartesianLabFrames(epsilonVectors,kPlaneVectors,  &
-        planeLabels)
+        planeLabels,labFrameWeights)
 !
 !     Build the default fixed-orientation lab-frame set. The molecule stays in
 !     the input molecular frame; each column gives a lab electric-field
@@ -469,9 +554,13 @@
       implicit none
       real(kind=real64),dimension(:,:),allocatable,intent(out)::  &
         epsilonVectors,kPlaneVectors
+      real(kind=real64),dimension(:),allocatable,intent(out)::  &
+        labFrameWeights
       character(len=8),dimension(:),allocatable,intent(out)::planeLabels
 !
-      Allocate(epsilonVectors(3,3),kPlaneVectors(3,3),planeLabels(3))
+      Allocate(epsilonVectors(3,3),kPlaneVectors(3,3),planeLabels(3),  &
+        labFrameWeights(3))
+      labFrameWeights = mqc_float(1)
 !
       planeLabels(1) = 'xy'
       epsilonVectors(:,1) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
@@ -491,7 +580,7 @@
 
 !PROCEDURE buildSphereLabFrames
       subroutine buildSphereLabFrames(epsilonVectors,kPlaneVectors,  &
-        planeLabels,nLabFrameTheta,nLabFramePhi)
+        planeLabels,labFrameWeights,nLabFrameTheta,nLabFramePhi)
 !
 !     This routine builds a lab-frame vector set from points on the unit sphere.
 !     The sphere points are used as electric-field polarization vectors, and the
@@ -503,6 +592,8 @@
       implicit none
       real(kind=real64),dimension(:,:),allocatable,intent(out)::  &
         epsilonVectors,kPlaneVectors
+      real(kind=real64),dimension(:),allocatable,intent(out)::  &
+        labFrameWeights
       character(len=8),dimension(:),allocatable,intent(out)::planeLabels
       integer(kind=int64),intent(in)::nLabFrameTheta,nLabFramePhi
 !
@@ -510,8 +601,10 @@
 !
 !     Build the vectors and labels.
 !
+      if(nLabFrameTheta.lt.3)  &
+        call mqc_error('buildSphereLabFrames: theta grid must be at least 3.')
       call buildSphereGrid(epsilonVectors,kPlaneVectors,nLabFrameTheta,  &
-        nLabFramePhi)
+        nLabFramePhi,weights=labFrameWeights)
       nLabFrames = Size(epsilonVectors,2)
       Allocate(planeLabels(nLabFrames))
       do i = 1,nLabFrames
@@ -605,7 +698,8 @@
       end subroutine betaLeastSquares
 !
 !PROCEDURE buildSphereGrid
-      subroutine buildSphereGrid(xyz,orthogVector,nThetaInput,nPhiInput)
+      subroutine buildSphereGrid(xyz,orthogVector,nThetaInput,nPhiInput,  &
+        weights)
 !
 !     This routine builds a set of Cartesian coordinates on the surface of a
 !     unit sphere. The points are evenly spaced in theta and phi. The output
@@ -619,8 +713,10 @@
       implicit none
       real(kind=real64),dimension(:,:),allocatable::xyz,orthogVector
       integer(kind=int64),intent(in),optional::nThetaInput,nPhiInput
+      real(kind=real64),dimension(:),allocatable,intent(out),optional::weights
       integer(kind=int64)::i,j,nThetaPoints,nPhiPoints,ixyz
-      real(kind=real64)::thetaStep,phiStep,theta,phi,x,y,z
+      real(kind=real64)::thetaStep,phiStep,theta,phi,x,y,z,  &
+        thetaLower,thetaUpper,pointWeight
 !
  1000 format(1x,i4,': theta,phi (pi)=',f5.2,',',f5.2,' | x,y,z=',f8.4,',',f8.4,',',f8.4)
 !
@@ -642,10 +738,14 @@
 !
       Allocate(xyz(3,(nThetaPoints-2)*nPhiPoints+2),  &
         orthogVector(3,(nThetaPoints-2)*nPhiPoints+2))
+      if(PRESENT(weights))  &
+        Allocate(weights((nThetaPoints-2)*nPhiPoints+2))
       theta = 0
       ixyz = 1
       do i = 1,nThetaPoints
         theta = mqc_float(i-1)*thetaStep
+        thetaLower = max(mqc_float(0),theta-(thetaStep/mqc_float(2)))
+        thetaUpper = min(Pi,theta+(thetaStep/mqc_float(2)))
         if(i.eq.1) then
           phi = mqc_float(0)
           x = sin(theta)*cos(phi)
@@ -657,6 +757,10 @@
           orthogVector(1,ixyz) = mqc_float(1)
           orthogVector(2,ixyz) = mqc_float(0)
           orthogVector(3,ixyz) = mqc_float(0)
+          if(PRESENT(weights)) then
+            pointWeight = mqc_float(2)*Pi*(cos(thetaLower)-cos(thetaUpper))
+            weights(ixyz) = pointWeight
+          endIf
           ixyz = ixyz+1
         elseIf(i.eq.nThetaPoints) then
           phi = mqc_float(0)
@@ -669,6 +773,10 @@
           orthogVector(1,ixyz) = mqc_float(-1)
           orthogVector(2,ixyz) = mqc_float(0)
           orthogVector(3,ixyz) = mqc_float(0)
+          if(PRESENT(weights)) then
+            pointWeight = mqc_float(2)*Pi*(cos(thetaLower)-cos(thetaUpper))
+            weights(ixyz) = pointWeight
+          endIf
           ixyz = ixyz+1
         else
           do j = 1,nPhiPoints
@@ -685,6 +793,10 @@
             orthogVector(1,ixyz) = x
             orthogVector(2,ixyz) = y
             orthogVector(3,ixyz) = z
+            if(PRESENT(weights)) then
+              pointWeight = phiStep*(cos(thetaLower)-cos(thetaUpper))
+              weights(ixyz) = pointWeight
+            endIf
             ixyz = ixyz+1
           endDo
         endIf

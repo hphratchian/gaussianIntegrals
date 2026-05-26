@@ -16,6 +16,11 @@
 !              0 = direct plane wave path
 !              1 = plane wave path through dysonMatrixElement routines
 !              2 = experimental free partial-wave path
+!           8. lab-frame model flag (optional; default=0)
+!              0 = 3 Cartesian lab-frame orientations
+!              1 = sphere-grid lab-frame orientations
+!           9. number of lab-frame theta points (optional; default=5)
+!          10. number of lab-frame phi points (optional; default=8)
 !
 !
 !     Hrant P. Hratchian, 2025.
