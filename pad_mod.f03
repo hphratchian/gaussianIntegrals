@@ -53,7 +53,7 @@
         real(kind=real64)::chiWeightSum=0.0_real64
         real(kind=real64)::averageIntensity0=0.0_real64
         real(kind=real64)::averageIntensity90=0.0_real64
-        real(kind=real64)::averageIntegratedIntensity=0.0_real64
+        real(kind=real64)::averageThetaIntegratedIntensity=0.0_real64
         real(kind=real64)::averageSolidAngleIntegratedIntensity=0.0_real64
         real(kind=real64)::averageBetaParaPerp=0.0_real64
         real(kind=real64)::averageBetaFit=0.0_real64
@@ -66,7 +66,7 @@
         real(kind=real64),dimension(:),allocatable::chi
         real(kind=real64),dimension(:),allocatable::chiWeights
         real(kind=real64),dimension(:),allocatable::labFrameWeights
-        real(kind=real64),dimension(:),allocatable::integratedIntensity
+        real(kind=real64),dimension(:),allocatable::thetaIntegratedIntensity
         real(kind=real64),dimension(:),allocatable::solidAngleIntegratedIntensity
         real(kind=real64),dimension(:),allocatable::intensity0
         real(kind=real64),dimension(:),allocatable::intensity90
@@ -295,7 +295,7 @@
         call mqc_error('PAD: chi quadrature weights sum to zero.')
       if(options%printResults) write(iOut,1270) results%nChi,  &
         results%chiWeightSum
-      Allocate(results%integratedIntensity(nIntPlanes),  &
+      Allocate(results%thetaIntegratedIntensity(nIntPlanes),  &
         results%solidAngleIntegratedIntensity(nIntPlanes),  &
         results%intensity0(nIntPlanes),results%intensity90(nIntPlanes),  &
         results%betaValsParaPerp(nIntPlanes),  &
@@ -305,7 +305,7 @@
         results%theta(options%nGridPointsTheta),  &
         results%thetaWeights(options%nGridPointsTheta),  &
         results%thetaSolidAngleWeights(options%nGridPointsTheta))
-      results%integratedIntensity = mqc_float(0)
+      results%thetaIntegratedIntensity = mqc_float(0)
       results%solidAngleIntegratedIntensity = mqc_float(0)
       results%intensity0 = mqc_float(0)
       results%intensity90 = mqc_float(0)
@@ -385,7 +385,6 @@
         call buildTransverseBasis(results%epsilonVector(:,i),  &
           results%kPlaneVector(:,i),epsilonUnit,uBasis,vBasis)
         results%epsilonVector(:,i) = epsilonUnit
-        results%kPlaneVector(:,i) = uBasis
         if(options%printResults) write(iOut,1100) i,  &
           results%epsilonVector(:,i),results%kPlaneVector(:,i)
         results%intensityTheta(:,i) = mqc_float(0)
@@ -464,7 +463,7 @@
 !
         call betaLeastSquares(results%intensityTheta(:,i),results%theta,  &
           results%betaValsFit(i),results%rSquared(i))
-        results%integratedIntensity(i) =  &
+        results%thetaIntegratedIntensity(i) =  &
           dot_product(results%intensityTheta(:,i),results%thetaWeights)
         results%solidAngleIntegratedIntensity(i) = results%chiWeightSum*  &
           dot_product(results%intensityTheta(:,i),  &
@@ -496,7 +495,7 @@
         results%intensity0)/results%labFrameWeightSum
       results%averageIntensity90 = dot_product(results%labFrameWeights,  &
         results%intensity90)/results%labFrameWeightSum
-      results%averageIntegratedIntensity =  &
+      results%averageThetaIntegratedIntensity =  &
         dot_product(results%averageIntensityTheta,results%thetaWeights)
       results%averageSolidAngleIntegratedIntensity = results%chiWeightSum*  &
         dot_product(results%averageIntensityTheta,  &
@@ -516,14 +515,14 @@
         write(iOut,3500) results%kMag
         do i = 1,nIntPlanes
           write(iOut,3510) TRIM(results%intPlaneLabels(i)),  &
-            results%epsilonVector(:,i),results%integratedIntensity(i),  &
+            results%epsilonVector(:,i),results%thetaIntegratedIntensity(i),  &
             results%solidAngleIntegratedIntensity(i),  &
             results%betaValsParaPerp(i),results%betaValsFit(i),  &
             results%rSquared(i)
         endDo
         write(iOut,3520)
         write(iOut,3530) results%meanBetaParaPerp,results%meanBetaFit
-        write(iOut,3540) results%averageIntegratedIntensity,  &
+        write(iOut,3540) results%averageThetaIntegratedIntensity,  &
           results%averageSolidAngleIntegratedIntensity,  &
           results%averageBetaParaPerp,results%averageBetaFit,  &
           results%averageRSquared

@@ -193,9 +193,10 @@ call runPADCalculation(faf,options,results)
 ```
 
 where `results` is a `pad_results` object containing the computed kinetic
-energy, `k`, theta and chi grids, PAD intensities, integrated intensities, beta
-values, solid-angle integrated intensities, and lab-frame vectors. The
-command-line program `pad.f03` is now a thin wrapper around this driver.
+energy, `k`, theta and chi grids, PAD intensities, theta-integrated
+intensities, beta values, solid-angle integrated intensities, and lab-frame
+vectors. The command-line program `pad.f03` is now a thin wrapper around this
+driver.
 
 The `pad_options%labFrameType` field controls how the lab-frame vectors are
 generated:
