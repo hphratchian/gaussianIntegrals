@@ -199,7 +199,7 @@
 !     travels in the xz plane.
 !
 !
-!     H. P. Hratchian, 2025.
+!     H. P. Hratchian, 2025, 2026.
 !
       implicit none
       real(kind=real64),intent(in)::theta,kMag
@@ -253,7 +253,6 @@
       MReal = dot_product(quadratureWeights,MValuesReal)
       MImaginary = dot_product(quadratureWeights,MValuesImaginary)
       MSquared = MReal**2 + MImaginary**2
-      if(abs(MSquared).lt.mqc_small) MSquared = mqc_float(0)
       return
       end function dysonPlaneWaveMatrixElementSquared
 
@@ -270,7 +269,7 @@
 !     travels in the xz plane.
 !
 !
-!     H. P. Hratchian, 2025.
+!     H. P. Hratchian, 2025, 2026.
 !
       implicit none
       real(kind=real64),intent(in)::kMag
@@ -342,7 +341,6 @@
       deallocate(aoBasisValues)
 !hph !$omp end parallel
       MSquared = MReal**2 + MImag**2
-      call mqc_vectorTrimZero(MSquared)
       if(MEMChecks) call print_memory_usage(iOut,'dysonPlaneWaveMatrixElementSquaredThetaList after OMP loop.')
 !
       return

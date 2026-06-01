@@ -787,19 +787,19 @@
 !     direction.
 !
 !
-!     H. P. Hratchian, 2025.
+!     H. P. Hratchian, 2025, 2026.
 !
       implicit none
       real(kind=real64),intent(in)::IPara,IPerp
-      real(kind=real64)::beta
+      real(kind=real64)::beta,denominator
 !
 !     Do the work...
 !
-      beta = IPara-IPerp
-      if(abs(beta).lt.mqc_small) then
+      denominator = (IPara/mqc_float(2))+IPerp
+      if(abs(denominator).le.tiny(denominator)) then
         beta = mqc_float(0)
       else
-        beta = beta/((IPara/mqc_float(2))+IPerp)
+        beta = (IPara-IPerp)/denominator
       endIf
 !
       return
@@ -814,7 +814,7 @@
 !     routine returns the fitted value of beta.
 !
 !
-!     H. P. Hratchian, 2025.
+!     H. P. Hratchian, 2025, 2026.
 !
 !
       implicit none
@@ -822,17 +822,19 @@
       real(kind=real64)::beta,rSquared
 !
       integer(kind=int64)::n
-      real(kind=real64)::slope,intercept
+      real(kind=real64)::slope,intercept,signalMax,signalRange
       real(kind=real64),dimension(:),allocatable::x,y
 !
-!     Before doing any work, check to see if all intensities are zero. If they
-!     are, then beta is zero.
+!     Before doing any work, check to see if all intensities are truly zero. If
+!     they are, then beta is zero. The tests are relative to the PAD signal
+!     scale so near-threshold physical intensities are not discarded.
 !
       beta = mqc_float(0)
       rSquared = mqc_float(0)
-      if(maxval(MSquaredList).lt.mqc_small) return
-      if((maxval(MSquaredList)-minval(MSquaredList)).lt.  &
-        mqc_small*max(mqc_float(1),maxval(abs(MSquaredList)))) then
+      signalMax = maxval(abs(MSquaredList))
+      if(signalMax.le.tiny(signalMax)) return
+      signalRange = maxval(MSquaredList)-minval(MSquaredList)
+      if(signalRange.le.epsilon(signalRange)*signalMax) then
         rSquared = mqc_float(1)
         return
       endIf
@@ -853,7 +855,11 @@
 !     Then, compuate the value of beta.
 !
       call MQC_leastSquaresFit(x,y,slope,intercept,rSquared)
-      beta = slope/intercept
+      if(abs(intercept).le.tiny(intercept)) then
+        beta = mqc_float(0)
+      else
+        beta = slope/intercept
+      endIf
 !
       DeAllocate(x)
       return
