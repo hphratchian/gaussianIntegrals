@@ -282,7 +282,8 @@
       integer(kind=int64)::i,j,nTheta,nGrid
       real(kind=real64)::w,dysonVal,epsilonDotMu,thetaTest
       real(kind=real64),dimension(:),allocatable::aoBasisValues,dysonNormTest
-      real(kind=real64),dimension(:),allocatable::MReal,MImag
+      real(kind=real64),dimension(:),allocatable::MReal,MImag,  &
+        MRealThread,MImagThread
       real(kind=real64),dimension(3)::gridPoint,kVector
 !
 !     Allocate memory and initialize variables.
@@ -308,10 +309,13 @@
 !
 !     Loop through the quadrature points to evaluate integrand values.
 !
-!hph !$omp parallel default(shared) private(i,j,w,dysonVal,epsilonDotMu,aoBasisValues,gridPoint,kVector) &
-!hph !$omp& reduction(+:MReal, MImag, dysonNormTest)
+!$omp parallel default(shared) private(i,j,w,dysonVal,epsilonDotMu,  &
+!$omp& aoBasisValues,gridPoint,kVector,MRealThread,MImagThread,thetaTest)
       allocate(aoBasisValues(SIZE(dysonCoeffs)))
-!hph !$omp do schedule(dynamic)
+      allocate(MRealThread(nTheta),MImagThread(nTheta))
+      MRealThread = mqc_float(0)
+      MImagThread = mqc_float(0)
+!$omp do schedule(static)
       do i = 1, nGrid
         gridPoint = quadraturePoints(:,i)
         call basisSetValuesList1(aoBasisSet, gridPoint, aoBasisValues)
@@ -333,13 +337,20 @@
             call mqc_error('STOP: ERROR!')
           endIf
           w = kMag * dot_product(kVector, gridPoint)
-          MReal(j) = MReal(j) + cos(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
-          MImag(j) = MImag(j) - sin(w) * epsilonDotMu * dysonVal * quadratureWeights(i)
-        end do
-      end do
-!hph !$omp end do
+          MRealThread(j) = MRealThread(j) + cos(w) * epsilonDotMu *  &
+            dysonVal * quadratureWeights(i)
+          MImagThread(j) = MImagThread(j) - sin(w) * epsilonDotMu *  &
+            dysonVal * quadratureWeights(i)
+        endDo
+      endDo
+!$omp end do
+!$omp critical
+      MReal = MReal+MRealThread
+      MImag = MImag+MImagThread
+!$omp end critical
       deallocate(aoBasisValues)
-!hph !$omp end parallel
+      deallocate(MRealThread,MImagThread)
+!$omp end parallel
       MSquared = MReal**2 + MImag**2
       if(MEMChecks) call print_memory_usage(iOut,'dysonPlaneWaveMatrixElementSquaredThetaList after OMP loop.')
 !

@@ -90,24 +90,61 @@ make pad.exe
 ## Running
 
 ```sh
-./pad.exe FAF_FILE MO_INDEX PHOTON_EV BINDING_EV [N_THETA] [N_GRID] [I_PE_TYPE] [LAB_FRAME_TYPE] [N_LAB_THETA] [N_LAB_PHI] [N_CHI]
+./pad.exe -faf FAF_FILE -dyson-mo MO_INDEX -photon-ev PHOTON_EV \
+  -binding-ev BINDING_EV [-n-theta N_THETA] [-n-grid N_GRID] \
+  [-pe-type I_PE_TYPE] [-lab-frame LAB_FRAME_TYPE] \
+  [-lab-theta N_LAB_THETA] [-lab-phi N_LAB_PHI] [-n-chi N_CHI] \
+  [-lmax L_MAX] [-threads N_THREADS]
 ```
 
-Arguments:
+Options may be written as `-option value`, `--option value`, or
+`--option=value`.
 
-| Argument | Required | Default | Meaning |
+Required options:
+
+| Option | Required | Default | Meaning |
 | --- | --- | --- | --- |
-| `FAF_FILE` | yes | none | Gaussian FAF file to read. |
-| `MO_INDEX` | yes | none | Alpha MO index used as the Dyson orbital. |
-| `PHOTON_EV` | yes | none | Photon energy in eV. |
-| `BINDING_EV` | yes | none | Electron binding/detachment energy in eV. |
-| `N_THETA` | no | `5` | Number of theta values from `0` to `pi`. |
-| `N_GRID` | no | `101` | Cartesian grid points per axis if FAF grid is absent. |
-| `I_PE_TYPE` | no | `0` | Photoelectron model flag. Use `0` for production. |
-| `LAB_FRAME_TYPE` | no | `0` | Lab-frame model flag. Use `0` for Cartesian or `1` for sphere-grid. |
-| `N_LAB_THETA` | no | `5` | Number of sphere-grid theta points when `LAB_FRAME_TYPE = 1`. |
-| `N_LAB_PHI` | no | `8` | Number of sphere-grid phi points when `LAB_FRAME_TYPE = 1`. |
-| `N_CHI` | no | `36` | Number of uniform chi points from `0` to `2*pi` used to rotate the PAD scan plane about each `epsilon`. The default gives `10` degree steps. |
+| `-faf` | yes | none | Gaussian FAF file to read. |
+| `-dyson-mo` | yes | none | Alpha MO index used as the Dyson orbital. |
+| `-photon-ev` | yes | none | Photon energy in eV. |
+| `-binding-ev` | yes | none | Electron binding/detachment energy in eV. |
+
+Numerical and model options:
+
+| Option | Default | Accepted values | Meaning |
+| --- | --- | --- | --- |
+| `-n-theta` | `5` | integer, at least `2` | Number of theta values from `0` to `pi`. |
+| `-n-grid` | `101` | integer, at least `2` | Cartesian grid points per axis if FAF grid is absent. |
+| `-pe-type` | `0` | `0`, `1`, `2` | Photoelectron model flag. Use `0` for production. |
+| `-lab-frame` | `cartesian` | `cartesian`, `sphere`, `0`, `1` | Lab-frame model. |
+| `-lab-theta` | `5` | integer, at least `3` for `sphere` | Number of sphere-grid theta points when `-lab-frame sphere`. |
+| `-lab-phi` | `8` | positive integer | Number of sphere-grid phi points when `-lab-frame sphere`. |
+| `-n-chi` | `36` | positive integer | Number of uniform chi points from `0` to `2*pi` used to rotate the PAD scan plane about each `epsilon`. The default gives `10` degree steps. |
+| `-lmax` | `6` | nonnegative integer | Maximum angular momentum for developmental partial-wave diagnostics. |
+| `-threads` | `1` | positive integer | Number of OpenMP threads requested by the CLI wrapper. |
+
+Common aliases:
+
+| Canonical option | Also accepted |
+| --- | --- |
+| `-faf` | `-faf-file`, `-file` |
+| `-dyson-mo` | `-mo`, `-mo-index`, `-dyson-mo-index` |
+| `-photon-ev` | `-photon-energy`, `-photon-energy-ev` |
+| `-binding-ev` | `-binding-energy`, `-binding-energy-ev` |
+| `-n-theta` | `-theta`, `-n-grid-points-theta` |
+| `-n-grid` | `-m-grid`, `-n-grid-points-m` |
+| `-pe-type` | `-ipe-type`, `-photoelectron-model` |
+| `-lab-frame` | `-lab-frame-type` |
+| `-lab-theta` | `-n-lab-theta`, `-n-lab-frame-theta` |
+| `-lab-phi` | `-n-lab-phi`, `-n-lab-frame-phi` |
+| `-n-chi` | `-chi` |
+| `-threads` | `-omp`, `-n-omp` |
+
+The older positional form is still accepted for existing scripts:
+
+```sh
+./pad.exe FAF_FILE MO_INDEX PHOTON_EV BINDING_EV [N_THETA] [N_GRID] [I_PE_TYPE] [LAB_FRAME_TYPE] [N_LAB_THETA] [N_LAB_PHI] [N_CHI]
+```
 
 The program computes the photoelectron kinetic energy and plane-wave magnitude
 from the photon and binding energies:
@@ -125,33 +162,40 @@ k                   = sqrt(2 * E_electron(Hartree))
 Run a plane-wave PAD calculation using an FAF with a stored quadrature grid:
 
 ```sh
-./pad.exe GTests/006.faf 1 1.100000 1.000000 7 101 0
+./pad.exe -faf GTests/006.faf -dyson-mo 1 -photon-ev 1.100000 \
+  -binding-ev 1.000000 -n-theta 7 -n-grid 101 -pe-type 0
 ```
 
 Run a small debug calculation using a fallback Cartesian grid if no FAF grid is
 available:
 
 ```sh
-./pad.exe GTests/001.faf 1 1.100000 1.000000 5 21 0
+./pad.exe -faf GTests/001.faf -dyson-mo 1 -photon-ev 1.100000 \
+  -binding-ev 1.000000 -n-theta 5 -n-grid 21 -pe-type 0
 ```
 
 Run the experimental partial-wave path:
 
 ```sh
-./pad.exe GTests/001.faf 1 1.100000 1.000000 5 21 2
+./pad.exe -faf GTests/001.faf -dyson-mo 1 -photon-ev 1.100000 \
+  -binding-ev 1.000000 -n-theta 5 -n-grid 21 -pe-type 2
 ```
 
 Run the sphere-grid lab-frame model with a small orientation grid:
 
 ```sh
-./pad.exe GTests/006.faf 1 1.100000 1.000000 5 101 0 1 5 8
+./pad.exe -faf GTests/006.faf -dyson-mo 1 -photon-ev 1.100000 \
+  -binding-ev 1.000000 -n-theta 5 -n-grid 101 -pe-type 0 \
+  -lab-frame sphere -lab-theta 5 -lab-phi 8
 ```
 
 Run the sphere-grid lab-frame model with chi averaging about each polarization
 direction:
 
 ```sh
-./pad.exe GTests/006.faf 1 1.100000 1.000000 5 101 0 1 5 8 8
+./pad.exe -faf GTests/006.faf -dyson-mo 1 -photon-ev 1.100000 \
+  -binding-ev 1.000000 -n-theta 5 -n-grid 101 -pe-type 0 \
+  -lab-frame sphere -lab-theta 5 -lab-phi 8 -n-chi 8
 ```
 
 ## Output

@@ -1,4 +1,5 @@
 #p test gfinput sto-3g units=au pop=full
+int(preComputeXCGridPoints)
 iop(3/33=2)
 output=faf
 
@@ -8,5 +9,5 @@ test
 h
 h  1  1.4
 
-003.faf
+003a.faf
 

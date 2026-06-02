@@ -104,6 +104,62 @@
 !
       options = pad_options()
       nCommandLineArgs = command_argument_count()
+      if(nCommandLineArgs.gt.0) then
+        call padDispatchCommandLine(options,fafName,nCommandLineArgs)
+      else
+        call padPrintUsage()
+        call mqc_error('PAD expects command line arguments.')
+      endIf
+!
+      return
+      end subroutine padCommandLine
+
+
+!PROCEDURE padDispatchCommandLine
+      subroutine padDispatchCommandLine(options,fafName,nCommandLineArgs)
+!
+!     This routine dispatches command-line parsing to the named-option parser
+!     or to the legacy positional parser.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      type(pad_options),intent(inout)::options
+      character(len=256),intent(out)::fafName
+      integer(kind=int64),intent(in)::nCommandLineArgs
+!
+      character(len=256)::arg
+!
+      call get_command_argument(1,arg)
+      if(TRIM(arg).eq.'-help'.or.TRIM(arg).eq.'--help'.or.  &
+        TRIM(arg).eq.'-h') then
+        call padPrintUsage()
+        stop
+      endIf
+      if(arg(1:1).eq.'-') then
+        call padNamedCommandLine(options,fafName,nCommandLineArgs)
+      else
+        call padLegacyCommandLine(options,fafName,nCommandLineArgs)
+      endIf
+!
+      return
+      end subroutine padDispatchCommandLine
+
+
+!PROCEDURE padLegacyCommandLine
+      subroutine padLegacyCommandLine(options,fafName,nCommandLineArgs)
+!
+!     This routine processes the legacy positional command-line arguments.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      type(pad_options),intent(inout)::options
+      character(len=256),intent(out)::fafName
+      integer(kind=int64),intent(in)::nCommandLineArgs
+!
       if(nCommandLineArgs.lt.4.or.nCommandLineArgs.gt.11)  &
         call mqc_error('PAD expects 4-11 command line arguments.')
       call get_command_argument(1,fafName)
@@ -133,7 +189,311 @@
       endIf
 !
       return
-      end subroutine padCommandLine
+      end subroutine padLegacyCommandLine
+
+
+!PROCEDURE padNamedCommandLine
+      subroutine padNamedCommandLine(options,fafName,nCommandLineArgs)
+!
+!     This routine processes named command-line options supplied as
+!     -option value pairs.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      type(pad_options),intent(inout)::options
+      character(len=256),intent(out)::fafName
+      integer(kind=int64),intent(in)::nCommandLineArgs
+!
+      integer(kind=int64)::i,equalPos
+      logical::gotFaf,gotMO,gotPhotonEV,gotBindingEV
+      character(len=256)::arg,value
+!
+      gotFaf = .false.
+      gotMO = .false.
+      gotPhotonEV = .false.
+      gotBindingEV = .false.
+      fafName = ''
+      i = 1
+      do while(i.le.nCommandLineArgs)
+        call get_command_argument(i,arg)
+        if(TRIM(arg).eq.'-help'.or.TRIM(arg).eq.'--help'.or.  &
+          TRIM(arg).eq.'-h') then
+          call padPrintUsage()
+          stop
+        endIf
+        if(arg(1:1).ne.'-')  &
+          call mqc_error('PAD: expected named option beginning with "-".')
+        equalPos = INDEX(arg,'=')
+        if(equalPos.gt.0) then
+          value = arg(equalPos+1:)
+          arg = arg(1:equalPos-1)
+        else
+          if(i.eq.nCommandLineArgs)  &
+            call mqc_error('PAD: missing value after option '//TRIM(arg)//'.')
+          i = i+1
+          call get_command_argument(i,value)
+        endIf
+        call padSetNamedOption(options,fafName,arg,value,gotFaf,gotMO,  &
+          gotPhotonEV,gotBindingEV)
+        i = i+1
+      endDo
+!
+      if(.not.gotFaf) call mqc_error('PAD: missing required -faf option.')
+      if(.not.gotMO) call mqc_error('PAD: missing required -dyson-mo option.')
+      if(.not.gotPhotonEV)  &
+        call mqc_error('PAD: missing required -photon-ev option.')
+      if(.not.gotBindingEV)  &
+        call mqc_error('PAD: missing required -binding-ev option.')
+!
+      return
+      end subroutine padNamedCommandLine
+
+
+!PROCEDURE padSetNamedOption
+      subroutine padSetNamedOption(options,fafName,arg,value,gotFaf,gotMO,  &
+        gotPhotonEV,gotBindingEV)
+!
+!     This routine assigns one parsed named command-line option.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      type(pad_options),intent(inout)::options
+      character(len=256),intent(inout)::fafName
+      character(len=*),intent(in)::arg,value
+      logical,intent(inout)::gotFaf,gotMO,gotPhotonEV,gotBindingEV
+!
+      character(len=64)::key
+!
+      call padOptionKey(arg,key)
+      select case(TRIM(key))
+      case('faf','faffile','file')
+        fafName = TRIM(value)
+        gotFaf = .true.
+      case('dysonmo','mo','moindex','dysonmoindex')
+        call padReadIntegerOption(arg,value,options%dysonMOIndex)
+        gotMO = .true.
+      case('photonev','photonenergy','photonenergyev')
+        call padReadRealOption(arg,value,options%photonEnergyEV)
+        gotPhotonEV = .true.
+      case('bindingev','bindingenergy','bindingenergyev')
+        call padReadRealOption(arg,value,options%bindingEnergyEV)
+        gotBindingEV = .true.
+      case('ntheta','ngridpointstheta','theta')
+        call padReadIntegerOption(arg,value,options%nGridPointsTheta)
+      case('ngrid','ngridpointsm','mgrid')
+        call padReadIntegerOption(arg,value,options%nGridPointsM)
+      case('petype','ipetype','photoelectronmodel')
+        call padReadIntegerOption(arg,value,options%iPEType)
+      case('labframe','labframetype')
+        call padReadLabFrameOption(arg,value,options%labFrameType)
+      case('labtheta','nlabtheta','nlabframetheta')
+        call padReadIntegerOption(arg,value,options%nLabFrameTheta)
+      case('labphi','nlabphi','nlabframephi')
+        call padReadIntegerOption(arg,value,options%nLabFramePhi)
+      case('nchi','chi')
+        call padReadIntegerOption(arg,value,options%nChi)
+      case('lmax')
+        call padReadIntegerOption(arg,value,options%lMax)
+      case('nomp','omp','threads')
+        call padReadIntegerOption(arg,value,options%nOMP)
+      case default
+        call mqc_error('PAD: unknown option '//TRIM(arg)//'.')
+      end select
+!
+      return
+      end subroutine padSetNamedOption
+
+
+!PROCEDURE padReadIntegerOption
+      subroutine padReadIntegerOption(arg,value,iValue)
+!
+!     This routine reads an integer command-line option value.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      character(len=*),intent(in)::arg,value
+      integer(kind=int64),intent(out)::iValue
+!
+      integer::iStat
+!
+      read(value,*,iostat=iStat) iValue
+      if(iStat.ne.0)  &
+        call mqc_error('PAD: invalid integer value for '//TRIM(arg)//'.')
+!
+      return
+      end subroutine padReadIntegerOption
+
+
+!PROCEDURE padReadRealOption
+      subroutine padReadRealOption(arg,value,rValue)
+!
+!     This routine reads a real command-line option value.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      character(len=*),intent(in)::arg,value
+      real(kind=real64),intent(out)::rValue
+!
+      integer::iStat
+!
+      read(value,*,iostat=iStat) rValue
+      if(iStat.ne.0)  &
+        call mqc_error('PAD: invalid real value for '//TRIM(arg)//'.')
+!
+      return
+      end subroutine padReadRealOption
+
+
+!PROCEDURE padReadLabFrameOption
+      subroutine padReadLabFrameOption(arg,value,labFrameType)
+!
+!     This routine reads a lab-frame model option as text or as an integer.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      character(len=*),intent(in)::arg,value
+      integer(kind=int64),intent(out)::labFrameType
+!
+      character(len=64)::key
+!
+      call padOptionKey(value,key)
+      select case(TRIM(key))
+      case('cartesian','cart','0')
+        labFrameType = PAD_LAB_FRAMES_CARTESIAN
+      case('sphere','spherical','spheregrid','1')
+        labFrameType = PAD_LAB_FRAMES_SPHERE
+      case('custom','2')
+        labFrameType = PAD_LAB_FRAMES_CUSTOM
+      case default
+        call padReadIntegerOption(arg,value,labFrameType)
+      end select
+!
+      return
+      end subroutine padReadLabFrameOption
+
+
+!PROCEDURE padOptionKey
+      subroutine padOptionKey(text,key)
+!
+!     This routine normalizes command-line option names for matching.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      character(len=*),intent(in)::text
+      character(len=*),intent(out)::key
+!
+      integer::i,j,code
+      character(len=1)::c
+!
+      key = ''
+      j = 0
+      do i = 1,LEN_TRIM(text)
+        c = text(i:i)
+        if(c.eq.'-'.or.c.eq.'_'.or.c.eq.' ') cycle
+        code = IACHAR(c)
+        if(code.ge.IACHAR('A').and.code.le.IACHAR('Z'))  &
+          c = ACHAR(code+IACHAR('a')-IACHAR('A'))
+        if(j.lt.LEN(key)) then
+          j = j+1
+          key(j:j) = c
+        endIf
+      endDo
+!
+      return
+      end subroutine padOptionKey
+
+
+!PROCEDURE padPrintUsage
+      subroutine padPrintUsage()
+!
+!     This routine prints a short command-line usage summary.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+!
+      write(iOut,'(1x,A)')  &
+        'Usage: ./pad.exe -faf FILE -dyson-mo N -photon-ev EV -binding-ev EV'
+      write(iOut,'(8x,A)')  &
+        '[-n-theta N] [-n-grid N] [-pe-type N] [-lab-frame cartesian|sphere]'
+      write(iOut,'(8x,A)')  &
+        '[-lab-theta N] [-lab-phi N] [-n-chi N] [-lmax N] [-threads N]'
+      write(iOut,'(1x,A)')  &
+        'Legacy positional arguments are still accepted.'
+!
+      return
+      end subroutine padPrintUsage
+
+
+!PROCEDURE padPrintOpenMPSettings
+      subroutine padPrintOpenMPSettings(options)
+!
+!     This routine prints the OpenMP settings visible to the PAD driver.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      type(pad_options),intent(in)::options
+!
+ 1000 format(1x,'OpenMP requested threads = ',i8)
+ 1010 format(1x,'OpenMP max threads       = ',i8)
+!
+      write(iOut,1000) options%nOMP
+      write(iOut,1010) omp_get_max_threads()
+!
+      return
+      end subroutine padPrintOpenMPSettings
+
+
+!PROCEDURE padPrintReproducibleCommand
+      subroutine padPrintReproducibleCommand(fafName,options)
+!
+!     This routine prints a command line that reproduces the current PAD CLI
+!     calculation options.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      character(len=*),intent(in)::fafName
+      type(pad_options),intent(in)::options
+!
+ 1000 format(/,1x,'Reproducible command line:',/)
+ 1010 format(3x,'./pad.exe -faf ',A,' \')
+ 1020 format(5x,'-dyson-mo ',i0,' \')
+ 1030 format(5x,'-photon-ev ',es24.16,' \')
+ 1040 format(5x,'-binding-ev ',es24.16,' \')
+ 1050 format(5x,'-n-theta ',i0,' -n-grid ',i0,' -pe-type ',i0,' \')
+ 1060 format(5x,'-lab-frame ',i0,' -lab-theta ',i0,' -lab-phi ',i0,' \')
+ 1070 format(5x,'-n-chi ',i0,' -lmax ',i0,' -threads ',i0,/)
+!
+      write(iOut,1000)
+      write(iOut,1010) TRIM(fafName)
+      write(iOut,1020) options%dysonMOIndex
+      write(iOut,1030) options%photonEnergyEV
+      write(iOut,1040) options%bindingEnergyEV
+      write(iOut,1050) options%nGridPointsTheta,options%nGridPointsM,  &
+        options%iPEType
+      write(iOut,1060) options%labFrameType,options%nLabFrameTheta,  &
+        options%nLabFramePhi
+      write(iOut,1070) options%nChi,options%lMax,options%nOMP
+!
+      return
+      end subroutine padPrintReproducibleCommand
 
 !
 !PROCEDURE padComputePhotoelectronEnergyAndK
@@ -186,9 +546,10 @@
       type(pad_options),intent(in)::options
       type(pad_results),intent(out)::results
 !
-      integer(kind=int64)::i,j,iChi,nIntPlanes
+      integer(kind=int64)::i,j,iChi,nIntPlanes,indexTheta90
       real(kind=real64)::tStart1,tEnd1,stepSizeIntM,stepSizeTheta,  &
-        thetaStart,MSquared0,MSquared90
+        thetaStart,MSquared0,MSquared90,tStart2,tEnd2,  &
+        timeSingleAngles,timeThetaList,thetaMatchTol
       real(kind=real64),dimension(3)::cartStart,cartEnd,epsilonVec,  &
         epsilonUnit,uBasis,vBasis,uChi
       real(kind=real64),dimension(:),allocatable::lWeights0,lWeights90,  &
@@ -196,7 +557,7 @@
       real(kind=real64),dimension(:),allocatable::quadWeightsM,  &
         MSquaredList
       real(kind=real64),dimension(:,:),allocatable::quadGridM,moCoeffs
-      logical::found
+      logical::found,foundTheta90
       type(mqc_basisset)::basisSet
       type(MQC_Variable)::tmp,quadTmp
 !
@@ -240,7 +601,7 @@
         1x,'Beta from averaged PAD(ratio) = ',f10.6,/,  &
         1x,'Beta from averaged PAD(fit)   = ',f10.6,  &
         ' (R**2 = ',f8.5,')',/)
- 8998 format(1x,'Time for ',A,': ',f15.1,' s')
+ 8998 format(1x,'Wall time for ',A,': ',f15.3,' s')
 !
 !     Validate user/model options and compute the photoelectron kinematics.
 !
@@ -326,7 +687,7 @@
 !     Use the Gaussian XC quadrature grid from the FAF when available. Otherwise
 !     fall back to a simple Cartesian trapezoid grid.
 !
-      call CPU_TIME(tStart1)
+      tStart1 = omp_get_wtime()
       call faf%getArray('3D Quadrature Grid',mqcVarOut=quadTmp,foundOut=found)
       if(found) then
         Allocate(quadWeightsM(SIZE(quadTmp,2)),quadGridM(3,SIZE(quadTmp,2)))
@@ -350,7 +711,7 @@
         if(options%printResults) write(iOut,2000) 'fallback M quadrature',  &
           options%nGridPointsM**3,stepSizeIntM
       endIf
-      call CPU_TIME(tEnd1)
+      tEnd1 = omp_get_wtime()
       if(options%printResults) write(iOut,8998)  &
         'M quadrature setup',tEnd1-tStart1
       if(options%printResults) flush(iOut)
@@ -365,14 +726,23 @@
       if(options%printResults) write(iOut,2000)  &
         'theta',options%nGridPointsTheta,stepSizeTheta
       if(options%printResults) flush(iOut)
+      foundTheta90 = .false.
+      indexTheta90 = 0
+      thetaMatchTol = sqrt(mqc_small)
+      do j = 1,options%nGridPointsTheta
+        if(abs(results%theta(j)-Pi/mqc_float(2)).lt.thetaMatchTol) then
+          foundTheta90 = .true.
+          indexTheta90 = j
+        endIf
+      endDo
 !
 !     Test that the chosen MO is normalized on the quadrature grid.
 !
-      call CPU_TIME(tStart1)
+      tStart1 = omp_get_wtime()
       results%dysonSelfOverlap = moInnerProductNumericalIntegration(  &
         moCoeffs(:,options%dysonMOIndex),quadGridM,quadWeightsM,basisSet)
       if(options%printResults) write(iOut,2500) results%dysonSelfOverlap
-      call CPU_TIME(tEnd1)
+      tEnd1 = omp_get_wtime()
       if(options%printResults) write(iOut,8998) 'norm test',tEnd1-tStart1
       if(options%printResults) flush(iOut)
 !
@@ -392,26 +762,36 @@
         results%intensity90(i) = mqc_float(0)
         lWeights0 = mqc_float(0)
         lWeights90 = mqc_float(0)
-        call CPU_TIME(tStart1)
+        timeSingleAngles = mqc_float(0)
+        timeThetaList = mqc_float(0)
+        tStart1 = omp_get_wtime()
 !
         do iChi = 1,results%nChi
           epsilonVec = results%epsilonVector(:,i)
           uChi = cos(results%chi(iChi))*uBasis+sin(results%chi(iChi))*vBasis
           call mqc_normalizeVector(uChi)
           if(options%iPEType.eq.0) then
-            MSquared0 = dysonPlaneWaveMatrixElementSquared(mqc_float(0),  &
-              results%kMag,epsilonVec,uChi,  &
-              moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
-              quadWeightsM)
-            MSquared90 = dysonPlaneWaveMatrixElementSquared(Pi/mqc_float(2),  &
-              results%kMag,epsilonVec,uChi,  &
-              moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
-              quadWeightsM)
+            tStart2 = omp_get_wtime()
             MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
               results%theta,results%kMag,epsilonVec,uChi,  &
               moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
               quadWeightsM)
+            tEnd2 = omp_get_wtime()
+            timeThetaList = timeThetaList+tEnd2-tStart2
+            MSquared0 = MSquaredList(1)
+            if(foundTheta90) then
+              MSquared90 = MSquaredList(indexTheta90)
+            else
+              tStart2 = omp_get_wtime()
+              MSquared90 = dysonPlaneWaveMatrixElementSquared(  &
+                Pi/mqc_float(2),results%kMag,epsilonVec,uChi,  &
+                moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
+                quadWeightsM)
+              tEnd2 = omp_get_wtime()
+              timeSingleAngles = timeSingleAngles+tEnd2-tStart2
+            endIf
           else
+            tStart2 = omp_get_wtime()
             call dysonMatrixElement1Angle(options%iPEType,options%lMax,  &
               mqc_float(0),results%kMag,epsilonVec,uChi,  &
               moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
@@ -420,10 +800,15 @@
               Pi/mqc_float(2),results%kMag,epsilonVec,uChi,  &
               moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
               quadWeightsM,MSquared90,lWeights90Tmp)
+            tEnd2 = omp_get_wtime()
+            timeSingleAngles = timeSingleAngles+tEnd2-tStart2
+            tStart2 = omp_get_wtime()
             call dysonMatrixElementThetaList(options%iPEType,options%lMax,  &
               results%theta,results%kMag,epsilonVec,uChi,  &
               moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
               quadWeightsM,MSquaredList)
+            tEnd2 = omp_get_wtime()
+            timeThetaList = timeThetaList+tEnd2-tStart2
             if(options%iPEType.eq.2) then
               lWeights0 = lWeights0+results%chiWeights(iChi)*lWeights0Tmp
               lWeights90 = lWeights90+results%chiWeights(iChi)*lWeights90Tmp
@@ -445,8 +830,10 @@
           lWeights90 = lWeights90/results%chiWeightSum
         endIf
 !
-        call CPU_TIME(tEnd1)
+        tEnd1 = omp_get_wtime()
         if(options%printResults) then
+          write(iOut,8998) 'single-angle MSquared calls',timeSingleAngles
+          write(iOut,8998) 'theta-list MSquared calls',timeThetaList
           if(results%nChi.gt.1) then
             write(iOut,8998) 'chi-averaged MSquared(theta) list',tEnd1-tStart1
           else
