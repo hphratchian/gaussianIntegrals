@@ -36,6 +36,8 @@ cases=(
   "006_cartesian_nchi36|-faf GTests/006.faf -dyson-mo 1 -photon-ev 1.100000 -binding-ev 1.000000 -n-theta 3 -n-grid 11 -pe-type 0 -lab-frame cartesian -n-chi 36"
   "006_sphere_small_nchi1|-faf GTests/006.faf -dyson-mo 1 -photon-ev 1.100000 -binding-ev 1.000000 -n-theta 3 -n-grid 11 -pe-type 0 -lab-frame sphere -lab-theta 3 -lab-phi 4 -n-chi 1"
   "006_sphere_small_nchi4|-faf GTests/006.faf -dyson-mo 1 -photon-ev 1.100000 -binding-ev 1.000000 -n-theta 3 -n-grid 11 -pe-type 0 -lab-frame sphere -lab-theta 3 -lab-phi 4 -n-chi 4"
+  "006_axisymmetric_small_nchi1|-faf GTests/006.faf -dyson-mo 1 -photon-ev 1.100000 -binding-ev 1.000000 -n-theta 3 -n-grid 11 -pe-type 0 -lab-frame axisymmetric -lab-theta 3 -lab-phi 4 -lab-alignment 0.5 -n-chi 1"
+  "006_axisymmetric_small_nchi4|-faf GTests/006.faf -dyson-mo 1 -photon-ev 1.100000 -binding-ev 1.000000 -n-theta 3 -n-grid 11 -pe-type 0 -lab-frame axisymmetric -lab-theta 3 -lab-phi 4 -lab-alignment 0.5 -n-chi 4"
 )
 
 extract_summary() {
