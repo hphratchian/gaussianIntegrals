@@ -69,12 +69,16 @@ all: unitTest1.exe
 
 %.o: %.F03
 	$(FC) $(FCFLAGS) -I$(MQCMODS) -c $*.F03
+
+gbs_mod.mod: memory_utils.mod mqc_integrals1.mod
+dyson_matrix_elements_mod.mod: memory_utils.mod mqc_integrals1.mod
+pad_mod.mod: memory_utils.mod gbs_mod.mod dyson_matrix_elements_mod.mod
 #
 # Generic rule for building general executable program (*.exe) from a standard
 # f03 source (*.f03) file.
 #
-%.exe: %.f03 memory_utils.mod mqc_integrals1.mod gbs_mod.mod pad_mod.mod $(MQCLIB)/libmqc.a
-	$(FC) $(Prof) -I$(MQCMODS) $(FCFLAGS) -o $*.exe $*.f03 pad_mod.o gbs_mod.o mqc_integrals1.o memory_utils.o $(LIBS)
+%.exe: %.f03 memory_utils.mod mqc_integrals1.mod gbs_mod.mod dyson_matrix_elements_mod.mod pad_mod.mod $(MQCLIB)/libmqc.a
+	$(FC) $(Prof) -I$(MQCMODS) $(FCFLAGS) -o $*.exe $*.f03 pad_mod.o dyson_matrix_elements_mod.o gbs_mod.o mqc_integrals1.o memory_utils.o $(LIBS)
 #
 # Clean rule for removing any object, module, or executable files in the working directory.
 #

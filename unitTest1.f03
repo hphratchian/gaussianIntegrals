@@ -14,8 +14,12 @@
 !
 !     H. P. Hratchian, 2025.
 !
-      use pad_mod
+      use iso_fortran_env
+      use omp_lib
+      use mqc_general
+      use dyson_matrix_elements_mod
       implicit none
+      integer(kind=int64),parameter::iOut=6_int64
       integer(kind=int64),parameter::nOMP=1,nTheta=181,nPhi=361,l=2,m=0
       integer(kind=int64)::i,j
       real(kind=real64)::wTotal,totalNorm,x,tmpVal
