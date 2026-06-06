@@ -31,8 +31,8 @@ For now, global prefactors are not included. The emphasis is on relative
 intensities and beta values.
 
 The code keeps the molecular frame fixed and changes the laboratory-frame
-vectors. This is the intended path for fixed-orientation calculations and for
-future rotational averaging.
+vectors. This is the intended path for fixed-orientation calculations and
+driver-layer rotational averaging.
 
 ## Current Status
 
@@ -116,7 +116,7 @@ Numerical and model options:
 | `-n-theta` | `5` | integer, at least `2` | Number of theta values from `0` to `pi`. |
 | `-n-grid` | `101` | integer, at least `2` | Cartesian grid points per axis if FAF grid is absent. |
 | `-pe-type` | `0` | `0`, `1`, `2` | Photoelectron model flag. Use `0` for production. |
-| `-lab-frame` | `cartesian` | `cartesian`, `sphere`, `0`, `1` | Lab-frame model. |
+| `-lab-frame` | `cartesian` | `cartesian`, `sphere`, `0`, `1` | Built-in lab-frame model. |
 | `-lab-theta` | `5` | integer, at least `3` for `sphere` | Number of sphere-grid theta points when `-lab-frame sphere`. |
 | `-lab-phi` | `8` | positive integer | Number of sphere-grid phi points when `-lab-frame sphere`. |
 | `-n-chi` | `36` | positive integer | Number of uniform chi points from `0` to `2*pi` used to rotate the PAD scan plane about each `epsilon`. The default gives `10` degree steps. |
@@ -145,6 +145,18 @@ The older positional form is still accepted for existing scripts:
 ```sh
 ./pad.exe FAF_FILE MO_INDEX PHOTON_EV BINDING_EV [N_THETA] [N_GRID] [I_PE_TYPE] [LAB_FRAME_TYPE] [N_LAB_THETA] [N_LAB_PHI] [N_CHI]
 ```
+
+For CLI use, the supported built-in lab-frame models are:
+
+| Model | Numeric value | Meaning |
+| --- | ---: | --- |
+| `cartesian` | `0` | Three Cartesian polarization directions with equal weights. |
+| `sphere` | `1` | Sphere-grid polarization directions with surface-area weights. |
+
+The programmatic custom model is `PAD_LAB_FRAMES_CUSTOM = -1`. It is intended
+for callers that fill `pad_options%labEpsilonVector`,
+`pad_options%labKPlaneVector`, and optional custom weights/labels before
+calling `runPADCalculation(...)`.
 
 The program computes the photoelectron kinetic energy and plane-wave magnitude
 from the photon and binding energies:
@@ -246,9 +258,9 @@ The `pad_options%labFrameType` field controls how the lab-frame vectors are
 generated:
 
 ```fortran
-PAD_LAB_FRAMES_CARTESIAN  ! default 3-axis lab-frame set
-PAD_LAB_FRAMES_SPHERE     ! sphere-grid lab-frame set
-PAD_LAB_FRAMES_CUSTOM     ! user-supplied vector arrays
+PAD_LAB_FRAMES_CUSTOM     ! -1, user-supplied vector arrays
+PAD_LAB_FRAMES_CARTESIAN  !  0, default 3-axis lab-frame set
+PAD_LAB_FRAMES_SPHERE     !  1, sphere-grid lab-frame set
 ```
 
 For the sphere-grid option, set `nLabFrameTheta` and `nLabFramePhi`. For custom

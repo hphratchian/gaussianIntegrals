@@ -14,7 +14,7 @@
       implicit none
       integer(kind=int64),parameter::PAD_LAB_FRAMES_CARTESIAN=0_int64
       integer(kind=int64),parameter::PAD_LAB_FRAMES_SPHERE=1_int64
-      integer(kind=int64),parameter::PAD_LAB_FRAMES_CUSTOM=2_int64
+      integer(kind=int64),parameter::PAD_LAB_FRAMES_CUSTOM=-1_int64
 !
 !
 !     The pad_options object collects user-facing and model-control options for
@@ -373,7 +373,7 @@
         labFrameType = PAD_LAB_FRAMES_CARTESIAN
       case('sphere','spherical','spheregrid','1')
         labFrameType = PAD_LAB_FRAMES_SPHERE
-      case('custom','2')
+      case('custom','user','userprovided','-1')
         labFrameType = PAD_LAB_FRAMES_CUSTOM
       case default
         call padReadIntegerOption(arg,value,labFrameType)
@@ -429,9 +429,11 @@
       write(iOut,'(1x,A)')  &
         'Usage: ./pad.exe -faf FILE -dyson-mo N -photon-ev EV -binding-ev EV'
       write(iOut,'(8x,A)')  &
-        '[-n-theta N] [-n-grid N] [-pe-type N] [-lab-frame cartesian|sphere]'
+        '[-n-theta N] [-n-grid N] [-pe-type N]'
       write(iOut,'(8x,A)')  &
-        '[-lab-theta N] [-lab-phi N] [-n-chi N] [-lmax N] [-threads N]'
+        '[-lab-frame cartesian|sphere] [-lab-theta N] [-lab-phi N]'
+      write(iOut,'(8x,A)')  &
+        '[-n-chi N] [-lmax N] [-threads N]'
       write(iOut,'(1x,A)')  &
         'Legacy positional arguments are still accepted.'
 !

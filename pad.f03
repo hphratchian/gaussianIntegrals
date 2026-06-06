@@ -10,6 +10,8 @@
 !       [-n-theta N] [-n-grid N] [-pe-type N]
 !       [-lab-frame cartesian|sphere] [-lab-theta N] [-lab-phi N]
 !       [-n-chi N]
+!     Programmatic callers may also use PAD_LAB_FRAMES_CUSTOM=-1 with
+!     user-supplied lab-frame vector arrays.
 !
 !     Legacy positional arguments are still accepted for existing scripts.
 !
