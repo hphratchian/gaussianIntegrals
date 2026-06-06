@@ -8,8 +8,10 @@
 !             -1 = custom lab-frame orientations filled by this test
 !              0 = 3 Cartesian lab-frame orientations
 !              1 = sphere-grid lab-frame orientations
+!              2 = axisymmetric lab-frame orientations
 !           2. number of lab-frame theta points (optional; default=5)
 !           3. number of lab-frame phi points (optional; default=8)
+!           4. axisymmetric alignment strength (optional; default=0)
 !
 !
 !     H. P. Hratchian, 2026.
@@ -20,7 +22,7 @@
       integer(kind=int64)::i,nLabFrames,nExpected
       real(kind=real64),parameter::tolGeom=1.0d-10,tolWeight=1.0d-10
       real(kind=real64)::weightSum,expectedWeightSum
-      real(kind=real64),dimension(3)::weightedMoment
+      real(kind=real64),dimension(3)::weightedMoment,weightedSecondMoment
       real(kind=real64),dimension(3,2)::expectedEpsilon,expectedKPlane
       real(kind=real64),dimension(:),allocatable::labFrameWeights
       real(kind=real64),dimension(:,:),allocatable::epsilonVectors,  &
@@ -34,9 +36,11 @@
  1100 format(1x,'Lab-frame model flag   = ',i3)
  1110 format(1x,'nLabFrameTheta        = ',i6)
  1120 format(1x,'nLabFramePhi          = ',i6)
+ 1130 format(1x,'labFrameAlignment    = ',f12.6)
  2000 format(1x,'No. of lab frames     = ',i8)
  2010 format(1x,'Sum of weights        = ',f20.10,3x,'expected = ',f20.10)
  2020 format(1x,'Weighted first moment = ',3f20.10)
+ 2030 format(1x,'Weighted second moment= ',3f20.10)
  2999 format(/,1x,'unitTest2 complete.')
 !
 !     Start the unit test program.
@@ -48,6 +52,7 @@
       write(iOut,1100) options%labFrameType
       write(iOut,1110) options%nLabFrameTheta
       write(iOut,1120) options%nLabFramePhi
+      write(iOut,1130) options%labFrameAlignment
 !
 !     Build the requested lab-frame grid and verify its geometry.
 !
@@ -147,6 +152,47 @@
         call assertNear(weightedMoment(3),mqc_float(0),tolWeight,  &
           'sphere weighted z moment')
 !
+      elseIf(options%labFrameType.eq.PAD_LAB_FRAMES_AXISYMMETRIC) then
+        nExpected = (options%nLabFrameTheta-2)*options%nLabFramePhi+2
+        expectedWeightSum = mqc_float(4)*Pi
+        call assertNear(weightSum,expectedWeightSum,tolWeight,  &
+          'axisymmetric weight sum')
+        if(nLabFrames.ne.nExpected) then
+          write(iOut,*)' nLabFrames = ',nLabFrames
+          write(iOut,*)' nExpected  = ',nExpected
+          call mqc_error('unitTest2: unexpected number of axisymmetric lab frames.')
+        endIf
+        if(MINVAL(labFrameWeights).lt.-mqc_small) then
+          write(iOut,*)' min weight = ',MINVAL(labFrameWeights)
+          call mqc_error('unitTest2: axisymmetric weights must be nonnegative.')
+        endIf
+        weightedMoment = mqc_float(0)
+        weightedSecondMoment = mqc_float(0)
+        do i = 1,nLabFrames
+          weightedMoment = weightedMoment+  &
+            labFrameWeights(i)*epsilonVectors(:,i)
+          weightedSecondMoment = weightedSecondMoment+labFrameWeights(i)*  &
+            epsilonVectors(:,i)*epsilonVectors(:,i)
+        endDo
+        weightedSecondMoment = weightedSecondMoment/weightSum
+        write(iOut,2020) weightedMoment
+        write(iOut,2030) weightedSecondMoment
+        call assertNear(weightedMoment(1),mqc_float(0),tolWeight,  &
+          'axisymmetric weighted x moment')
+        call assertNear(weightedMoment(2),mqc_float(0),tolWeight,  &
+          'axisymmetric weighted y moment')
+        call assertNear(weightedMoment(3),mqc_float(0),tolWeight,  &
+          'axisymmetric weighted z moment')
+        if(options%labFrameAlignment.gt.mqc_small.and.  &
+          weightedSecondMoment(3).le.mqc_float(1)/mqc_float(3)) then
+          write(iOut,*)' weightedSecondMoment(3) = ',weightedSecondMoment(3)
+          call mqc_error('unitTest2: positive axisymmetric alignment should favor z.')
+        endIf
+        if(TRIM(planeLabels(1)).ne.'a0000001') then
+          write(iOut,*)' planeLabels(1) = ',planeLabels(1)
+          call mqc_error('unitTest2: unexpected axisymmetric plane label.')
+        endIf
+!
       else
         call mqc_error('unitTest2: unsupported lab-frame model.')
       endIf
@@ -231,8 +277,8 @@
       options%printThetaTable = .false.
       options%nOMP = nOMP
       nCommandLineArgs = command_argument_count()
-      if(nCommandLineArgs.gt.3)  &
-        call mqc_error('unitTest2 expects 0-3 command line arguments.')
+      if(nCommandLineArgs.gt.4)  &
+        call mqc_error('unitTest2 expects 0-4 command line arguments.')
       if(nCommandLineArgs.ge.1) then
         call mqc_get_command_argument_integer(1,options%labFrameType)
       endIf
@@ -241,6 +287,9 @@
       endIf
       if(nCommandLineArgs.ge.3) then
         call mqc_get_command_argument_integer(3,options%nLabFramePhi)
+      endIf
+      if(nCommandLineArgs.ge.4) then
+        call mqc_get_command_argument_real(4,options%labFrameAlignment)
       endIf
       if(options%labFrameType.eq.PAD_LAB_FRAMES_CUSTOM)  &
         call setupUnitTest2CustomLabFrames(options)

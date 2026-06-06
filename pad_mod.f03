@@ -14,6 +14,7 @@
       implicit none
       integer(kind=int64),parameter::PAD_LAB_FRAMES_CARTESIAN=0_int64
       integer(kind=int64),parameter::PAD_LAB_FRAMES_SPHERE=1_int64
+      integer(kind=int64),parameter::PAD_LAB_FRAMES_AXISYMMETRIC=2_int64
       integer(kind=int64),parameter::PAD_LAB_FRAMES_CUSTOM=-1_int64
 !
 !
@@ -34,6 +35,7 @@
         logical::printThetaTable=.true.
         real(kind=real64)::photonEnergyEV=0.0_real64
         real(kind=real64)::bindingEnergyEV=0.0_real64
+        real(kind=real64)::labFrameAlignment=0.0_real64
         real(kind=real64),dimension(:,:),allocatable::labEpsilonVector
         real(kind=real64),dimension(:,:),allocatable::labKPlaneVector
         real(kind=real64),dimension(:),allocatable::labFrameWeights
@@ -295,6 +297,9 @@
         call padReadIntegerOption(arg,value,options%nLabFrameTheta)
       case('labphi','nlabphi','nlabframephi')
         call padReadIntegerOption(arg,value,options%nLabFramePhi)
+      case('labalignment','alignment','labalign','labalignp2',  &
+        'labalignmentp2','alignmentp2')
+        call padReadRealOption(arg,value,options%labFrameAlignment)
       case('nchi','chi')
         call padReadIntegerOption(arg,value,options%nChi)
       case('lmax')
@@ -373,6 +378,8 @@
         labFrameType = PAD_LAB_FRAMES_CARTESIAN
       case('sphere','spherical','spheregrid','1')
         labFrameType = PAD_LAB_FRAMES_SPHERE
+      case('axisymmetric','axial','aligned','alignment','2')
+        labFrameType = PAD_LAB_FRAMES_AXISYMMETRIC
       case('custom','user','userprovided','-1')
         labFrameType = PAD_LAB_FRAMES_CUSTOM
       case default
@@ -431,9 +438,9 @@
       write(iOut,'(8x,A)')  &
         '[-n-theta N] [-n-grid N] [-pe-type N]'
       write(iOut,'(8x,A)')  &
-        '[-lab-frame cartesian|sphere] [-lab-theta N] [-lab-phi N]'
+        '[-lab-frame cartesian|sphere|axisymmetric] [-lab-theta N] [-lab-phi N]'
       write(iOut,'(8x,A)')  &
-        '[-n-chi N] [-lmax N] [-threads N]'
+        '[-lab-alignment A] [-n-chi N] [-lmax N] [-threads N]'
       write(iOut,'(1x,A)')  &
         'Legacy positional arguments are still accepted.'
 !
@@ -482,7 +489,8 @@
  1040 format(5x,'-binding-ev ',es24.16,' \')
  1050 format(5x,'-n-theta ',i0,' -n-grid ',i0,' -pe-type ',i0,' \')
  1060 format(5x,'-lab-frame ',i0,' -lab-theta ',i0,' -lab-phi ',i0,' \')
- 1070 format(5x,'-n-chi ',i0,' -lmax ',i0,' -threads ',i0,/)
+ 1070 format(5x,'-lab-alignment ',es24.16,' -n-chi ',i0,' \')
+ 1080 format(5x,'-lmax ',i0,' -threads ',i0,/)
 !
       write(iOut,1000)
       write(iOut,1010) TRIM(fafName)
@@ -493,7 +501,8 @@
         options%iPEType
       write(iOut,1060) options%labFrameType,options%nLabFrameTheta,  &
         options%nLabFramePhi
-      write(iOut,1070) options%nChi,options%lMax,options%nOMP
+      write(iOut,1070) options%labFrameAlignment,options%nChi
+      write(iOut,1080) options%lMax,options%nOMP
 !
       return
       end subroutine padPrintReproducibleCommand
@@ -624,6 +633,11 @@
         call mqc_error('PAD: nLabFrameTheta must be at least 2.')
       if(options%nLabFramePhi.lt.1)  &
         call mqc_error('PAD: nLabFramePhi must be positive.')
+      if(options%labFrameType.eq.PAD_LAB_FRAMES_AXISYMMETRIC) then
+        if(options%labFrameAlignment.lt.-mqc_float(1).or.  &
+          options%labFrameAlignment.gt.mqc_float(2))  &
+          call mqc_error('PAD: labFrameAlignment must be between -1 and 2.')
+      endIf
       call padComputePhotoelectronEnergyAndK(options,  &
         results%photoelectronEnergyEV,results%photoelectronEnergyHartree,  &
         results%kMag)
@@ -956,6 +970,11 @@
           planeLabels,labFrameWeights,options%nLabFrameTheta,  &
           options%nLabFramePhi)
 !
+      case(PAD_LAB_FRAMES_AXISYMMETRIC)
+        call buildAxisymmetricLabFrames(epsilonVectors,kPlaneVectors,  &
+          planeLabels,labFrameWeights,options%nLabFrameTheta,  &
+          options%nLabFramePhi,options%labFrameAlignment)
+!
       case(PAD_LAB_FRAMES_CUSTOM)
         if(.not.Allocated(options%labEpsilonVector))  &
           call mqc_error('buildPADLabFrames: custom epsilon vectors missing.')
@@ -1077,6 +1096,57 @@
 !
       return
       end subroutine buildSphereLabFrames
+
+
+!PROCEDURE buildAxisymmetricLabFrames
+      subroutine buildAxisymmetricLabFrames(epsilonVectors,kPlaneVectors,  &
+        planeLabels,labFrameWeights,nLabFrameTheta,nLabFramePhi,  &
+        alignment)
+!
+!     This routine builds an axisymmetric lab-frame distribution around the
+!     lab z axis. It starts from the sphere-grid orientations and applies a
+!     nonnegative weight factor 1 + alignment*P2(cos(theta)).
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      real(kind=real64),dimension(:,:),allocatable,intent(out)::  &
+        epsilonVectors,kPlaneVectors
+      real(kind=real64),dimension(:),allocatable,intent(out)::  &
+        labFrameWeights
+      character(len=8),dimension(:),allocatable,intent(out)::planeLabels
+      integer(kind=int64),intent(in)::nLabFrameTheta,nLabFramePhi
+      real(kind=real64),intent(in)::alignment
+!
+      integer(kind=int64)::i,nLabFrames
+      real(kind=real64)::p2Val,weightFactor,weightSum
+!
+!     Build the base sphere-grid vectors and reweight them by the axisymmetric
+!     distribution. The accepted alignment range keeps all weights
+!     nonnegative for -1/2 <= P2(cos(theta)) <= 1.
+!
+      if(alignment.lt.-mqc_float(1).or.alignment.gt.mqc_float(2))  &
+        call mqc_error('buildAxisymmetricLabFrames: alignment out of range.')
+      call buildSphereLabFrames(epsilonVectors,kPlaneVectors,planeLabels,  &
+        labFrameWeights,nLabFrameTheta,nLabFramePhi)
+      nLabFrames = Size(epsilonVectors,2)
+      do i = 1,nLabFrames
+        p2Val = (mqc_float(3)*epsilonVectors(3,i)*epsilonVectors(3,i)-  &
+          mqc_float(1))/mqc_float(2)
+        weightFactor = mqc_float(1)+alignment*p2Val
+        if(weightFactor.lt.-mqc_small)  &
+          call mqc_error('buildAxisymmetricLabFrames: negative weight factor.')
+        labFrameWeights(i) = labFrameWeights(i)*max(mqc_float(0),weightFactor)
+        write(planeLabels(i),'("a",i7.7)') i
+      endDo
+      weightSum = SUM(labFrameWeights)
+      if(weightSum.le.mqc_small)  &
+        call mqc_error('buildAxisymmetricLabFrames: weights sum to zero.')
+      labFrameWeights = labFrameWeights*(mqc_float(4)*Pi/weightSum)
+!
+      return
+      end subroutine buildAxisymmetricLabFrames
 
 
 !PROCEDURE buildChiQuadrature

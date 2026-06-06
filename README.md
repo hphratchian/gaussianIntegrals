@@ -99,7 +99,8 @@ make test-unit
 ```
 
 This runs `unitTest1.exe` and several `unitTest2.exe` lab-frame setup checks,
-including Cartesian, sphere-grid, and programmatic custom lab-frame inputs.
+including Cartesian, sphere-grid, axisymmetric, and programmatic custom
+lab-frame inputs.
 
 Run both the unit-style checks and the PAD regression set with:
 
@@ -141,8 +142,8 @@ make update-pad-refs
 ./pad.exe -faf FAF_FILE -dyson-mo MO_INDEX -photon-ev PHOTON_EV \
   -binding-ev BINDING_EV [-n-theta N_THETA] [-n-grid N_GRID] \
   [-pe-type I_PE_TYPE] [-lab-frame LAB_FRAME_TYPE] \
-  [-lab-theta N_LAB_THETA] [-lab-phi N_LAB_PHI] [-n-chi N_CHI] \
-  [-lmax L_MAX] [-threads N_THREADS]
+  [-lab-theta N_LAB_THETA] [-lab-phi N_LAB_PHI] \
+  [-lab-alignment A] [-n-chi N_CHI] [-lmax L_MAX] [-threads N_THREADS]
 ```
 
 Options may be written as `-option value`, `--option value`, or
@@ -164,9 +165,10 @@ Numerical and model options:
 | `-n-theta` | `5` | integer, at least `2` | Number of theta values from `0` to `pi`. |
 | `-n-grid` | `101` | integer, at least `2` | Cartesian grid points per axis if FAF grid is absent. |
 | `-pe-type` | `0` | `0`, `1`, `2` | Photoelectron model flag. Use `0` for production. |
-| `-lab-frame` | `cartesian` | `cartesian`, `sphere`, `0`, `1` | Built-in lab-frame model. |
-| `-lab-theta` | `5` | integer, at least `3` for `sphere` | Number of sphere-grid theta points when `-lab-frame sphere`. |
-| `-lab-phi` | `8` | positive integer | Number of sphere-grid phi points when `-lab-frame sphere`. |
+| `-lab-frame` | `cartesian` | `cartesian`, `sphere`, `axisymmetric`, `0`, `1`, `2` | Built-in lab-frame model. |
+| `-lab-theta` | `5` | integer, at least `3` for `sphere` or `axisymmetric` | Number of sphere-grid theta points when `-lab-frame sphere` or `axisymmetric`. |
+| `-lab-phi` | `8` | positive integer | Number of sphere-grid phi points when `-lab-frame sphere` or `axisymmetric`. |
+| `-lab-alignment` | `0.0` | real from `-1` to `2` | Axisymmetric alignment strength around lab `z`; internally this is the coefficient `A` in `1 + A P2(cos(theta))`. |
 | `-n-chi` | `36` | positive integer | Number of uniform chi points from `0` to `2*pi` used to rotate the PAD scan plane about each `epsilon`. The default gives `10` degree steps. |
 | `-lmax` | `6` | nonnegative integer | Maximum angular momentum for developmental partial-wave diagnostics. |
 | `-threads` | `1` | positive integer | Number of OpenMP threads requested by the CLI wrapper. |
@@ -185,6 +187,7 @@ Common aliases:
 | `-lab-frame` | `-lab-frame-type` |
 | `-lab-theta` | `-n-lab-theta`, `-n-lab-frame-theta` |
 | `-lab-phi` | `-n-lab-phi`, `-n-lab-frame-phi` |
+| `-lab-alignment` | `-alignment`, `-lab-align`, `-lab-align-p2`, `-lab-alignment-p2`, `-alignment-p2` |
 | `-n-chi` | `-chi` |
 | `-threads` | `-omp`, `-n-omp` |
 
@@ -200,6 +203,7 @@ For CLI use, the supported built-in lab-frame models are:
 | --- | ---: | --- |
 | `cartesian` | `0` | Three Cartesian polarization directions with equal weights. |
 | `sphere` | `1` | Sphere-grid polarization directions with surface-area weights. |
+| `axisymmetric` | `2` | Sphere-grid polarization directions reweighted by `1 + A P2(cos(theta))` about lab `z` and renormalized to `4*pi`. |
 
 The programmatic custom model is `PAD_LAB_FRAMES_CUSTOM = -1`. It is intended
 for callers that fill `pad_options%labEpsilonVector`,
@@ -258,6 +262,14 @@ direction:
   -lab-frame sphere -lab-theta 5 -lab-phi 8 -n-chi 8
 ```
 
+Run the axisymmetric lab-frame model with positive alignment along lab `z`:
+
+```sh
+./pad.exe -faf GTests/006.faf -dyson-mo 1 -photon-ev 1.100000 \
+  -binding-ev 1.000000 -n-theta 5 -n-grid 101 -pe-type 0 \
+  -lab-frame axisymmetric -lab-theta 5 -lab-phi 8 -lab-alignment 0.5
+```
+
 ## Output
 
 For each lab-frame orientation, `pad.exe` prints:
@@ -309,18 +321,24 @@ generated:
 PAD_LAB_FRAMES_CUSTOM     ! -1, user-supplied vector arrays
 PAD_LAB_FRAMES_CARTESIAN  !  0, default 3-axis lab-frame set
 PAD_LAB_FRAMES_SPHERE     !  1, sphere-grid lab-frame set
+PAD_LAB_FRAMES_AXISYMMETRIC ! 2, weighted sphere-grid lab-frame set
 ```
 
-For the sphere-grid option, set `nLabFrameTheta` and `nLabFramePhi`. For custom
-lab frames, fill `labEpsilonVector(3,n)`, `labKPlaneVector(3,n)`, and optionally
-`labFrameWeights(n)` and `labFrameLabels(n)`. The lab-frame generator supplies
-polarization directions, reference transverse vectors, and outer weights. The
-driver then performs a uniform periodic chi average about each `epsilon` using
-`nChi` points before combining the weighted `epsilon`-grid results.
+For the sphere-grid and axisymmetric options, set `nLabFrameTheta` and
+`nLabFramePhi`. The axisymmetric option also uses `labFrameAlignment`, the
+alignment strength around lab `z`. In the current model this is the coefficient
+`A` in `1 + A P2(cos(theta))`; valid values are `-1 <= A <= 2`. For custom lab
+frames, fill `labEpsilonVector(3,n)`,
+`labKPlaneVector(3,n)`, and optionally `labFrameWeights(n)` and
+`labFrameLabels(n)`. The lab-frame generator supplies polarization directions,
+reference transverse vectors, and outer weights. The driver then performs a
+uniform periodic chi average about each `epsilon` using `nChi` points before
+combining the weighted `epsilon`-grid results.
 
 The sphere-grid model supplies surface-area weights for the sampled
-polarization directions. The chi quadrature supplies equal weights over
-`0 <= chi < 2*pi`.
+polarization directions. The axisymmetric model reweights those same
+directions and renormalizes the weights to `4*pi`. The chi quadrature supplies
+equal weights over `0 <= chi < 2*pi`.
 
 ## Interpreting Beta
 
@@ -362,10 +380,11 @@ make unitTest1.exe
 make unitTest2.exe
 ./unitTest2.exe
 ./unitTest2.exe 1 5 8
+./unitTest2.exe 2 5 8 0.5
 ./unitTest2.exe -1
 ```
 
 The default run checks the Cartesian model, `1 5 8` checks a small sphere-grid
-model, and `-1` checks the programmatic custom lab-frame path. These are
-lightweight helper tests, not a complete validation suite for the PAD
-calculation.
+model, `2 5 8 0.5` checks a positively aligned axisymmetric model, and `-1`
+checks the programmatic custom lab-frame path. These are lightweight helper
+tests, not a complete validation suite for the PAD calculation.

@@ -87,6 +87,7 @@ test-unit: unitTest1.exe unitTest2.exe
 	./unitTest1.exe
 	./unitTest2.exe
 	./unitTest2.exe 1 5 8
+	./unitTest2.exe 2 5 8 0.5
 	./unitTest2.exe -1
 
 test-pad: pad.exe
