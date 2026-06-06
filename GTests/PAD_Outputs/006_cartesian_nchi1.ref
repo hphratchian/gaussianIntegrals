@@ -1,0 +1,12 @@
+# key value abs_tol rel_tol
+photoelectronEnergyEV 0.100000 5.0e-7 5.0e-7
+photoelectronEnergyHartree 3.674930E-03 5.0e-9 5.0e-7
+kMag 0.085731 5.0e-7 5.0e-7
+nLabFrames 3 0.0 0.0
+labFrameWeightSum 3.000000E+00 5.0e-6 5.0e-7
+nChi 1 0.0 0.0
+chiWeightSum 6.283185E+00 5.0e-6 5.0e-7
+averageThetaIntegratedIntensity 6.866750E-06 5.0e-11 5.0e-7
+averageSolidAngleIntegratedIntensity 2.641873E-21 5.0e-26 5.0e-7
+averageBetaParaPerp 2.000000 5.0e-7 5.0e-7
+averageBetaFit 2.000000 5.0e-7 5.0e-7

@@ -87,6 +87,54 @@ export mqcinstall=/path/to/mqcPack
 make pad.exe
 ```
 
+`make all` builds the current lightweight unit-test executables,
+`unitTest1.exe` and `unitTest2.exe`.
+
+## Test Targets
+
+Run the lightweight unit-style checks with:
+
+```sh
+make test-unit
+```
+
+This runs `unitTest1.exe` and several `unitTest2.exe` lab-frame setup checks,
+including Cartesian, sphere-grid, and programmatic custom lab-frame inputs.
+
+Run both the unit-style checks and the PAD regression set with:
+
+```sh
+make test
+```
+
+## PAD Regression Tests
+
+A small `pad.exe` regression set uses `GTests/006.faf` and compact reference
+summaries in `GTests/PAD_Outputs/`. Run it from the repository root with:
+
+```sh
+make test-pad
+```
+
+The runner checks that `GTests/006.faf` exists before running. If it is absent,
+go to `GTests/` and run `006.gjf` with Gaussian to regenerate `006.faf`.
+
+The current cases cover:
+
+- Cartesian lab-frame sampling with `nChi = 1`
+- Cartesian lab-frame sampling with `nChi = 36`
+- Small sphere-grid lab-frame sampling with `nChi = 1`
+- Small sphere-grid lab-frame sampling with `nChi = 4`
+
+The test harness compares stable scientific summary quantities with tolerances
+rather than diffing full output files, since full output includes wall times.
+After an intentional scientific or output-format change, regenerate references
+with:
+
+```sh
+make update-pad-refs
+```
+
 ## Running
 
 ```sh
@@ -308,5 +356,16 @@ make unitTest1.exe
 ./unitTest1.exe
 ```
 
-This is currently a lightweight helper test, not a complete validation suite
-for the PAD calculation.
+`unitTest2.exe` exercises PAD lab-frame setup behavior:
+
+```sh
+make unitTest2.exe
+./unitTest2.exe
+./unitTest2.exe 1 5 8
+./unitTest2.exe -1
+```
+
+The default run checks the Cartesian model, `1 5 8` checks a small sphere-grid
+model, and `-1` checks the programmatic custom lab-frame path. These are
+lightweight helper tests, not a complete validation suite for the PAD
+calculation.

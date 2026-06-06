@@ -56,8 +56,9 @@ endif
 #
 # The 'all' rule.
 #
-all: unitTest1.exe
+all: unitTest1.exe unitTest2.exe
 #hph all: basisCounting.exe gbs.exe pad.exe unitTest1.exe
+.PHONY: test test-unit test-pad update-pad-refs
 #
 # Generic rules for building module (*.mod) and object (*.o) files.
 #
@@ -79,6 +80,20 @@ pad_mod.mod: memory_utils.mod gbs_mod.mod dyson_matrix_elements_mod.mod
 #
 %.exe: %.f03 memory_utils.mod mqc_integrals1.mod gbs_mod.mod dyson_matrix_elements_mod.mod pad_mod.mod $(MQCLIB)/libmqc.a
 	$(FC) $(Prof) -I$(MQCMODS) $(FCFLAGS) -o $*.exe $*.f03 pad_mod.o dyson_matrix_elements_mod.o gbs_mod.o mqc_integrals1.o memory_utils.o $(LIBS)
+
+test: test-unit test-pad
+
+test-unit: unitTest1.exe unitTest2.exe
+	./unitTest1.exe
+	./unitTest2.exe
+	./unitTest2.exe 1 5 8
+	./unitTest2.exe -1
+
+test-pad: pad.exe
+	./scripts/run_pad_tests.sh
+
+update-pad-refs: pad.exe
+	./scripts/run_pad_tests.sh --update
 #
 # Clean rule for removing any object, module, or executable files in the working directory.
 #
