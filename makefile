@@ -56,7 +56,7 @@ endif
 #
 # The 'all' rule.
 #
-all: unitTest1.exe unitTest2.exe
+all: unitTest1.exe unitTest2.exe unitTest3.exe
 #hph all: basisCounting.exe gbs.exe pad.exe unitTest1.exe
 .PHONY: test test-unit test-pad update-pad-refs
 #
@@ -83,12 +83,13 @@ pad_mod.mod: memory_utils.mod gbs_mod.mod dyson_matrix_elements_mod.mod
 
 test: test-unit test-pad
 
-test-unit: unitTest1.exe unitTest2.exe
+test-unit: unitTest1.exe unitTest2.exe unitTest3.exe
 	./unitTest1.exe
 	./unitTest2.exe
 	./unitTest2.exe 1 5 8
 	./unitTest2.exe 2 5 8 0.5
 	./unitTest2.exe -1
+	./unitTest3.exe
 
 test-pad: pad.exe
 	./scripts/run_pad_tests.sh

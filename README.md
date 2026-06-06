@@ -88,7 +88,7 @@ make pad.exe
 ```
 
 `make all` builds the current lightweight unit-test executables,
-`unitTest1.exe` and `unitTest2.exe`.
+`unitTest1.exe`, `unitTest2.exe`, and `unitTest3.exe`.
 
 ## Test Targets
 
@@ -98,9 +98,8 @@ Run the lightweight unit-style checks with:
 make test-unit
 ```
 
-This runs `unitTest1.exe` and several `unitTest2.exe` lab-frame setup checks,
-including Cartesian, sphere-grid, axisymmetric, and programmatic custom
-lab-frame inputs.
+This runs `unitTest1.exe`, several `unitTest2.exe` lab-frame setup checks, and
+`unitTest3.exe` for the spherical Lebedev product quadrature utilities.
 
 Run both the unit-style checks and the PAD regression set with:
 
@@ -126,6 +125,8 @@ The current cases cover:
 - Cartesian lab-frame sampling with `nChi = 36`
 - Small sphere-grid lab-frame sampling with `nChi = 1`
 - Small sphere-grid lab-frame sampling with `nChi = 4`
+- Small axisymmetric lab-frame sampling with `nChi = 1`
+- Small axisymmetric lab-frame sampling with `nChi = 4`
 
 The test harness compares stable scientific summary quantities with tolerances
 rather than diffing full output files, since full output includes wall times.
@@ -358,6 +359,8 @@ Near-term development goals include:
 
 - More robust regression tests for known PAD and beta limits.
 - Cleaner handling of FAF metadata and missing quadrature grids.
+- Wiring the one-center Lebedev product quadrature utility into PAD as an
+  explicit quadrature option after convergence testing.
 - Rotational averaging with a fixed molecular frame and rotated lab frame.
 - Validation and extension of the free partial-wave path.
 - Later continuum models suitable for photoionization of neutrals, where the
@@ -388,3 +391,11 @@ The default run checks the Cartesian model, `1 5 8` checks a small sphere-grid
 model, `2 5 8 0.5` checks a positively aligned axisymmetric model, and `-1`
 checks the programmatic custom lab-frame path. These are lightweight helper
 tests, not a complete validation suite for the PAD calculation.
+
+`unitTest3.exe` exercises the one-center spherical Lebedev product quadrature
+utility, including both trapezoid and Gauss-Legendre radial rules:
+
+```sh
+make unitTest3.exe
+./unitTest3.exe
+```
