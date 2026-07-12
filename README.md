@@ -6,9 +6,14 @@ current production path models an outgoing free electron as a linearly
 propagating plane wave and is intended for gas-phase photodetachment
 simulations where an anion is converted to a neutral molecule plus an electron.
 
-The program reads molecular orbital and basis-set data from a Gaussian FAF
-file. In the current workflow, one selected alpha molecular orbital is treated
-as the Dyson orbital for a single detachment channel.
+The program reads coefficient and basis-set data from a Gaussian FAF file. It
+selects one coefficient vector from the FAF `ALPHA MO COEFFICIENTS` array as
+the Dyson orbital for a single detachment channel. In the intended workflow, a
+separate code forms the Dyson orbital and writes its coefficients into an FAF
+MO slot. Using that slot provides a convenient interchange format and makes the
+Dyson orbital available to GaussView and other commonly used orbital
+visualization programs; it does not imply that the selected vector is an
+ordinary canonical MO.
 
 ## Scientific Model
 
@@ -22,7 +27,8 @@ I(theta)      = |M(k, epsilon)|^2
 
 where:
 
-- `psi_D(r)` is the selected Dyson orbital, currently supplied as one alpha MO.
+- `psi_D(r)` is the selected Dyson orbital, supplied through one coefficient
+  slot in the FAF alpha-MO array.
 - `epsilon` is the electric-field polarization vector.
 - `k` is the outgoing photoelectron wave vector.
 - `theta` is the angle between `epsilon` and `k`.
@@ -142,7 +148,7 @@ make update-pad-refs
 ```sh
 ./pad.exe -faf FAF_FILE -dyson-mo MO_INDEX -photon-ev PHOTON_EV \
   -binding-ev BINDING_EV [-n-theta N_THETA] [-n-grid N_GRID] \
-  [-pe-type I_PE_TYPE] [-lab-frame LAB_FRAME_TYPE] \
+  [-quad QUADRATURE_TYPE] [-pe-type I_PE_TYPE] [-lab-frame LAB_FRAME_TYPE] \
   [-lab-theta N_LAB_THETA] [-lab-phi N_LAB_PHI] \
   [-lab-alignment A] [-n-chi N_CHI] [-lmax L_MAX] [-threads N_THREADS]
 ```
@@ -155,7 +161,7 @@ Required options:
 | Option | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `-faf` | yes | none | Gaussian FAF file to read. |
-| `-dyson-mo` | yes | none | Alpha MO index used as the Dyson orbital. |
+| `-dyson-mo` | yes | none | Index of the FAF alpha-MO coefficient slot containing the Dyson orbital. |
 | `-photon-ev` | yes | none | Photon energy in eV. |
 | `-binding-ev` | yes | none | Electron binding/detachment energy in eV. |
 
@@ -165,6 +171,7 @@ Numerical and model options:
 | --- | --- | --- | --- |
 | `-n-theta` | `5` | integer, at least `2` | Number of theta values from `0` to `pi`. |
 | `-n-grid` | `101` | integer, at least `2` | Cartesian grid points per axis if FAF grid is absent. |
+| `-quad` | `auto` | `faf`, `cartesian`, `cart`, `lebedev`, `leb`, `auto` | Matrix-element quadrature source. `auto` preserves the historical behavior: use the FAF grid when present, otherwise Cartesian fallback. |
 | `-pe-type` | `0` | `0`, `1`, `2` | Photoelectron model flag. Use `0` for production. |
 | `-lab-frame` | `cartesian` | `cartesian`, `sphere`, `axisymmetric`, `0`, `1`, `2` | Built-in lab-frame model. |
 | `-lab-theta` | `5` | integer, at least `3` for `sphere` or `axisymmetric` | Number of sphere-grid theta points when `-lab-frame sphere` or `axisymmetric`. |
@@ -184,6 +191,7 @@ Common aliases:
 | `-binding-ev` | `-binding-energy`, `-binding-energy-ev` |
 | `-n-theta` | `-theta`, `-n-grid-points-theta` |
 | `-n-grid` | `-m-grid`, `-n-grid-points-m` |
+| `-quad` | `-quadrature`, `-m-quadrature`, `-spatial-quadrature` |
 | `-pe-type` | `-ipe-type`, `-photoelectron-model` |
 | `-lab-frame` | `-lab-frame-type` |
 | `-lab-theta` | `-n-lab-theta`, `-n-lab-frame-theta` |
@@ -228,15 +236,22 @@ Run a plane-wave PAD calculation using an FAF with a stored quadrature grid:
 
 ```sh
 ./pad.exe -faf GTests/006.faf -dyson-mo 1 -photon-ev 1.100000 \
-  -binding-ev 1.000000 -n-theta 7 -n-grid 101 -pe-type 0
+  -binding-ev 1.000000 -n-theta 7 -n-grid 101 -quad faf -pe-type 0
 ```
 
-Run a small debug calculation using a fallback Cartesian grid if no FAF grid is
-available:
+Run a small debug calculation using the Cartesian trapezoid grid:
 
 ```sh
 ./pad.exe -faf GTests/001.faf -dyson-mo 1 -photon-ev 1.100000 \
-  -binding-ev 1.000000 -n-theta 5 -n-grid 21 -pe-type 0
+  -binding-ev 1.000000 -n-theta 5 -n-grid 21 -quad cart -pe-type 0
+```
+
+Run a small calculation using the one-center Lebedev product grid with current
+default radial and angular settings:
+
+```sh
+./pad.exe -faf GTests/006.faf -dyson-mo 1 -photon-ev 1.100000 \
+  -binding-ev 1.000000 -n-theta 5 -quad leb -pe-type 0
 ```
 
 Run the experimental partial-wave path:
@@ -294,6 +309,11 @@ first averaged over chi for that `epsilon`. The summary also reports weighted
 mean beta values and beta values computed from the weighted
 orientation-averaged PAD intensity curve.
 
+The inner chi average and outer lab-frame average perform different angular
+operations. Chi samples the outgoing-electron azimuth around one fixed
+polarization direction. The outer lab-frame weights sample polarization
+directions relative to the fixed molecular frame.
+
 Two different integrated-intensity summaries are now printed:
 
 - `theta-integrated intensity`: the PAD integrated only over `theta`
@@ -349,6 +369,14 @@ Two beta estimates are currently printed:
 - `beta(fit)`: obtained from a least-squares fit to the standard
   `P2(cos(theta))` angular form.
 
+For orientation-averaged results, `averageBetaParaPerp` and `averageBetaFit`
+are evaluated from the weighted averaged PAD and are the primary quantities for
+comparison with a beta extracted from an averaged experimental PAD.
+`meanBetaParaPerp` and `meanBetaFit` instead average beta values that were first
+computed separately for each orientation. Those mean values are useful
+diagnostics, but they are not generally equal to beta from the averaged PAD
+because beta is obtained from ratios of intensities.
+
 For clean one-channel test cases, these should normally agree closely. Large
 disagreements are a useful signal that the angular grid, quadrature, orbital,
 or model assumptions need closer inspection.
@@ -393,7 +421,9 @@ checks the programmatic custom lab-frame path. These are lightweight helper
 tests, not a complete validation suite for the PAD calculation.
 
 `unitTest3.exe` exercises the one-center spherical Lebedev product quadrature
-utility, including both trapezoid and Gauss-Legendre radial rules:
+utility, including both trapezoid and Gauss-Legendre radial rules plus helper
+formulas for choosing `rMaxBohr` from the AO primitive tail and `nRadial` from
+the plane-wave wavelength:
 
 ```sh
 make unitTest3.exe

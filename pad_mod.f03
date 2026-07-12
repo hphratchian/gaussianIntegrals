@@ -16,6 +16,10 @@
       integer(kind=int64),parameter::PAD_LAB_FRAMES_SPHERE=1_int64
       integer(kind=int64),parameter::PAD_LAB_FRAMES_AXISYMMETRIC=2_int64
       integer(kind=int64),parameter::PAD_LAB_FRAMES_CUSTOM=-1_int64
+      integer(kind=int64),parameter::PAD_QUAD_AUTO=-1_int64
+      integer(kind=int64),parameter::PAD_QUAD_FAF=0_int64
+      integer(kind=int64),parameter::PAD_QUAD_CARTESIAN=1_int64
+      integer(kind=int64),parameter::PAD_QUAD_LEBEDEV=2_int64
 !
 !
 !     The pad_options object collects user-facing and model-control options for
@@ -28,6 +32,10 @@
         integer(kind=int64)::iPEType=0_int64
         integer(kind=int64)::lMax=6_int64
         integer(kind=int64)::nOMP=1_int64
+        integer(kind=int64)::quadratureType=PAD_QUAD_AUTO
+        integer(kind=int64)::lebedevOrder=26_int64
+        integer(kind=int64)::lebedevRadialRule=QUAD_RADIAL_GAUSS_LEGENDRE
+        integer(kind=int64)::lebedevMinRadialPoints=25_int64
         integer(kind=int64)::labFrameType=PAD_LAB_FRAMES_CARTESIAN
         integer(kind=int64)::nLabFrameTheta=5_int64
         integer(kind=int64)::nLabFramePhi=8_int64
@@ -36,6 +44,8 @@
         real(kind=real64)::photonEnergyEV=0.0_real64
         real(kind=real64)::bindingEnergyEV=0.0_real64
         real(kind=real64)::labFrameAlignment=0.0_real64
+        real(kind=real64)::lebedevTailTol=1.0e-8_real64
+        real(kind=real64)::lebedevPointsPerWavelength=8.0_real64
         real(kind=real64),dimension(:,:),allocatable::labEpsilonVector
         real(kind=real64),dimension(:,:),allocatable::labKPlaneVector
         real(kind=real64),dimension(:),allocatable::labFrameWeights
@@ -289,6 +299,8 @@
         call padReadIntegerOption(arg,value,options%nGridPointsTheta)
       case('ngrid','ngridpointsm','mgrid')
         call padReadIntegerOption(arg,value,options%nGridPointsM)
+      case('quad','quadrature','mquadrature','spatialquadrature')
+        call padReadQuadratureOption(arg,value,options%quadratureType)
       case('petype','ipetype','photoelectronmodel')
         call padReadIntegerOption(arg,value,options%iPEType)
       case('labframe','labframetype')
@@ -390,6 +402,39 @@
       end subroutine padReadLabFrameOption
 
 
+!PROCEDURE padReadQuadratureOption
+      subroutine padReadQuadratureOption(arg,value,quadratureType)
+!
+!     This routine reads a matrix-element quadrature option as text or as an
+!     integer.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      character(len=*),intent(in)::arg,value
+      integer(kind=int64),intent(out)::quadratureType
+!
+      character(len=64)::key
+!
+      call padOptionKey(value,key)
+      select case(TRIM(key))
+      case('auto','default','-1')
+        quadratureType = PAD_QUAD_AUTO
+      case('faf','gaussian','gaussiangrid','0')
+        quadratureType = PAD_QUAD_FAF
+      case('cartesian','cart','1')
+        quadratureType = PAD_QUAD_CARTESIAN
+      case('lebedev','leb','2')
+        quadratureType = PAD_QUAD_LEBEDEV
+      case default
+        call padReadIntegerOption(arg,value,quadratureType)
+      end select
+!
+      return
+      end subroutine padReadQuadratureOption
+
+
 !PROCEDURE padOptionKey
       subroutine padOptionKey(text,key)
 !
@@ -436,7 +481,7 @@
       write(iOut,'(1x,A)')  &
         'Usage: ./pad.exe -faf FILE -dyson-mo N -photon-ev EV -binding-ev EV'
       write(iOut,'(8x,A)')  &
-        '[-n-theta N] [-n-grid N] [-pe-type N]'
+        '[-n-theta N] [-n-grid N] [-quad faf|cartesian|lebedev] [-pe-type N]'
       write(iOut,'(8x,A)')  &
         '[-lab-frame cartesian|sphere|axisymmetric] [-lab-theta N] [-lab-phi N]'
       write(iOut,'(8x,A)')  &
@@ -487,10 +532,11 @@
  1020 format(5x,'-dyson-mo ',i0,' \')
  1030 format(5x,'-photon-ev ',es24.16,' \')
  1040 format(5x,'-binding-ev ',es24.16,' \')
- 1050 format(5x,'-n-theta ',i0,' -n-grid ',i0,' -pe-type ',i0,' \')
- 1060 format(5x,'-lab-frame ',i0,' -lab-theta ',i0,' -lab-phi ',i0,' \')
- 1070 format(5x,'-lab-alignment ',es24.16,' -n-chi ',i0,' \')
- 1080 format(5x,'-lmax ',i0,' -threads ',i0,/)
+ 1050 format(5x,'-n-theta ',i0,' -n-grid ',i0,' -quad ',i0,' \')
+ 1060 format(5x,'-pe-type ',i0,' -lab-frame ',i0,' \')
+ 1070 format(5x,'-lab-theta ',i0,' -lab-phi ',i0,' \')
+ 1080 format(5x,'-lab-alignment ',es24.16,' -n-chi ',i0,' \')
+ 1090 format(5x,'-lmax ',i0,' -threads ',i0,/)
 !
       write(iOut,1000)
       write(iOut,1010) TRIM(fafName)
@@ -498,11 +544,11 @@
       write(iOut,1030) options%photonEnergyEV
       write(iOut,1040) options%bindingEnergyEV
       write(iOut,1050) options%nGridPointsTheta,options%nGridPointsM,  &
-        options%iPEType
-      write(iOut,1060) options%labFrameType,options%nLabFrameTheta,  &
-        options%nLabFramePhi
-      write(iOut,1070) options%labFrameAlignment,options%nChi
-      write(iOut,1080) options%lMax,options%nOMP
+        options%quadratureType
+      write(iOut,1060) options%iPEType,options%labFrameType
+      write(iOut,1070) options%nLabFrameTheta,options%nLabFramePhi
+      write(iOut,1080) options%labFrameAlignment,options%nChi
+      write(iOut,1090) options%lMax,options%nOMP
 !
       return
       end subroutine padPrintReproducibleCommand
@@ -559,19 +605,19 @@
       type(pad_results),intent(out)::results
 !
       integer(kind=int64)::i,j,iChi,nIntPlanes,indexTheta90
-      real(kind=real64)::tStart1,tEnd1,stepSizeIntM,stepSizeTheta,  &
+      real(kind=real64)::tStart1,tEnd1,stepSizeTheta,  &
         thetaStart,MSquared0,MSquared90,tStart2,tEnd2,  &
         timeSingleAngles,timeThetaList,thetaMatchTol
-      real(kind=real64),dimension(3)::cartStart,cartEnd,epsilonVec,  &
+      real(kind=real64),dimension(3)::epsilonVec,  &
         epsilonUnit,uBasis,vBasis,uChi
       real(kind=real64),dimension(:),allocatable::lWeights0,lWeights90,  &
         lWeights0Tmp,lWeights90Tmp
       real(kind=real64),dimension(:),allocatable::quadWeightsM,  &
         MSquaredList
       real(kind=real64),dimension(:,:),allocatable::quadGridM,moCoeffs
-      logical::found,foundTheta90
+      logical::foundTheta90
       type(mqc_basisset)::basisSet
-      type(MQC_Variable)::tmp,quadTmp
+      type(MQC_Variable)::tmp
 !
  1100 format(/,1x,'Lab frame ',i4,': epsilon = (',f7.3,',',f7.3,',',f7.3,')',  &
         '  reference k-plane vector = (',f7.3,',',f7.3,',',f7.3,')')
@@ -701,33 +747,11 @@
       if(options%dysonMOIndex.gt.Size(moCoeffs,2))  &
         call mqc_error('PAD: requested Dyson orbital index is out of range.')
 !
-!     Use the Gaussian XC quadrature grid from the FAF when available. Otherwise
-!     fall back to a simple Cartesian trapezoid grid.
+!     Build the selected matrix-element quadrature grid.
 !
       tStart1 = omp_get_wtime()
-      call faf%getArray('3D Quadrature Grid',mqcVarOut=quadTmp,foundOut=found)
-      if(found) then
-        Allocate(quadWeightsM(SIZE(quadTmp,2)),quadGridM(3,SIZE(quadTmp,2)))
-        do i = 1,SIZE(quadTmp,2)
-          quadWeightsM(i) = quadTmp%getVal([ 1,i ])
-          quadGridM(1,i) = quadTmp%getVal([ 2,i ])
-          quadGridM(2,i) = quadTmp%getVal([ 3,i ])
-          quadGridM(3,i) = quadTmp%getVal([ 4,i ])
-        endDo
-        if(options%printResults) write(iOut,2010)  &
-          'FAF M quadrature',SIZE(quadWeightsM)
-      else
-        cartStart = [ -mqc_float(6),-mqc_float(6),-mqc_float(6) ]
-        cartEnd = [ mqc_float(6),mqc_float(6),mqc_float(6) ]
-        stepSizeIntM = (cartEnd(1)-cartStart(1))/  &
-          mqc_float(options%nGridPointsM-1)
-        Allocate(quadGridM(3,options%nGridPointsM**3),  &
-          quadWeightsM(options%nGridPointsM**3))
-        call setup_quadrature_trapezoid3d(options%nGridPointsM,  &
-          stepSizeIntM,cartStart,quadGridM,quadWeightsM)
-        if(options%printResults) write(iOut,2000) 'fallback M quadrature',  &
-          options%nGridPointsM**3,stepSizeIntM
-      endIf
+      call buildPADMatrixElementQuadrature(faf,options,results%kMag,  &
+        quadGridM,quadWeightsM)
       tEnd1 = omp_get_wtime()
       if(options%printResults) write(iOut,8998)  &
         'M quadrature setup',tEnd1-tStart1
@@ -934,6 +958,199 @@
 !
       return
       end subroutine runPADCalculation
+
+
+!PROCEDURE buildPADMatrixElementQuadrature
+      subroutine buildPADMatrixElementQuadrature(faf,options,kMag,quadGridM,  &
+        quadWeightsM)
+!
+!     This routine builds the spatial quadrature grid used for photoelectron
+!     transition matrix elements.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      type(mqc_gaussian_unformatted_matrix_file),intent(inout)::faf
+      type(pad_options),intent(in)::options
+      real(kind=real64),intent(in)::kMag
+      real(kind=real64),dimension(:,:),allocatable,intent(out)::quadGridM
+      real(kind=real64),dimension(:),allocatable,intent(out)::quadWeightsM
+      logical::found
+      type(MQC_Variable)::quadTmp
+!
+      select case(options%quadratureType)
+      case(PAD_QUAD_AUTO)
+        call faf%getArray('3D Quadrature Grid',mqcVarOut=quadTmp,  &
+          foundOut=found)
+        if(found) then
+          call buildPADFAFQuadrature(quadTmp,quadGridM,quadWeightsM)
+          if(options%printResults) write(iOut,'(1x,A,3x,i12)')  &
+            'FAF M quadrature',SIZE(quadWeightsM)
+        else
+          call buildPADCartesianQuadrature(options,quadGridM,quadWeightsM)
+        endIf
+!
+      case(PAD_QUAD_FAF)
+        call faf%getArray('3D Quadrature Grid',mqcVarOut=quadTmp,  &
+          foundOut=found)
+        if(.not.found)  &
+          call mqc_error('PAD: requested FAF quadrature, but no 3D Quadrature Grid was found.')
+        call buildPADFAFQuadrature(quadTmp,quadGridM,quadWeightsM)
+        if(options%printResults) write(iOut,'(1x,A,3x,i12)')  &
+          'FAF M quadrature',SIZE(quadWeightsM)
+!
+      case(PAD_QUAD_CARTESIAN)
+        call buildPADCartesianQuadrature(options,quadGridM,quadWeightsM)
+!
+      case(PAD_QUAD_LEBEDEV)
+        call buildPADLebedevQuadrature(faf,options,kMag,quadGridM,  &
+          quadWeightsM)
+!
+      case default
+        call mqc_error('PAD: unsupported matrix-element quadrature type.')
+      end select
+!
+      return
+      end subroutine buildPADMatrixElementQuadrature
+
+
+!PROCEDURE buildPADFAFQuadrature
+      subroutine buildPADFAFQuadrature(quadTmp,quadGridM,quadWeightsM)
+!
+!     This routine copies the Gaussian FAF 3D quadrature array into the generic
+!     point/weight arrays used by the PAD kernels.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      type(MQC_Variable),intent(in)::quadTmp
+      real(kind=real64),dimension(:,:),allocatable,intent(out)::quadGridM
+      real(kind=real64),dimension(:),allocatable,intent(out)::quadWeightsM
+      integer(kind=int64)::i
+!
+      Allocate(quadWeightsM(SIZE(quadTmp,2)),quadGridM(3,SIZE(quadTmp,2)))
+      do i = 1,SIZE(quadTmp,2)
+        quadWeightsM(i) = quadTmp%getVal([ 1,i ])
+        quadGridM(1,i) = quadTmp%getVal([ 2,i ])
+        quadGridM(2,i) = quadTmp%getVal([ 3,i ])
+        quadGridM(3,i) = quadTmp%getVal([ 4,i ])
+      endDo
+!
+      return
+      end subroutine buildPADFAFQuadrature
+
+
+!PROCEDURE buildPADCartesianQuadrature
+      subroutine buildPADCartesianQuadrature(options,quadGridM,quadWeightsM)
+!
+!     This routine builds the existing Cartesian fallback trapezoid grid for
+!     matrix-element quadrature.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      type(pad_options),intent(in)::options
+      real(kind=real64),dimension(:,:),allocatable,intent(out)::quadGridM
+      real(kind=real64),dimension(:),allocatable,intent(out)::quadWeightsM
+      real(kind=real64)::stepSizeIntM
+      real(kind=real64),dimension(3)::cartStart,cartEnd
+!
+      if(options%nGridPointsM.lt.2)  &
+        call mqc_error('PAD: Cartesian quadrature nGrid must be at least 2.')
+      cartStart = [ -mqc_float(6),-mqc_float(6),-mqc_float(6) ]
+      cartEnd = [ mqc_float(6),mqc_float(6),mqc_float(6) ]
+      stepSizeIntM = (cartEnd(1)-cartStart(1))/  &
+        mqc_float(options%nGridPointsM-1)
+      Allocate(quadGridM(3,options%nGridPointsM**3),  &
+        quadWeightsM(options%nGridPointsM**3))
+      call setup_quadrature_trapezoid3d(options%nGridPointsM,  &
+        stepSizeIntM,cartStart,quadGridM,quadWeightsM)
+      if(options%printResults) write(iOut,'(1x,A,3x,i12,3x,A,es14.6)')  &
+        'Cartesian M quadrature',options%nGridPointsM**3,'step',  &
+        stepSizeIntM
+!
+      return
+      end subroutine buildPADCartesianQuadrature
+
+
+!PROCEDURE buildPADLebedevQuadrature
+      subroutine buildPADLebedevQuadrature(faf,options,kMag,quadGridM,  &
+        quadWeightsM)
+!
+!     This routine builds the default one-center Lebedev product quadrature
+!     for matrix-element integration.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      type(mqc_gaussian_unformatted_matrix_file),intent(inout)::faf
+      type(pad_options),intent(in)::options
+      real(kind=real64),intent(in)::kMag
+      real(kind=real64),dimension(:,:),allocatable,intent(out)::quadGridM
+      real(kind=real64),dimension(:),allocatable,intent(out)::quadWeightsM
+      integer(kind=int64)::nRadial
+      real(kind=real64)::rMaxBohr
+      real(kind=real64),dimension(3)::originBohr
+      real(kind=real64),dimension(:),allocatable::primitiveExponents
+      real(kind=real64),dimension(:,:),allocatable::centerCoordsBohr
+!
+      originBohr = [ mqc_float(0),mqc_float(0),mqc_float(0) ]
+      call loadPADLebedevSizingData(faf,centerCoordsBohr,primitiveExponents)
+      rMaxBohr = lebedev_spherical_rmax_from_basis_tail(originBohr,  &
+        centerCoordsBohr,primitiveExponents,options%lebedevTailTol)
+      nRadial = lebedev_spherical_nradial_from_k(rMaxBohr,kMag,  &
+        options%lebedevPointsPerWavelength,options%lebedevMinRadialPoints)
+      call setup_quadrature_lebedev_spherical(originBohr,rMaxBohr,nRadial,  &
+        options%lebedevOrder,options%lebedevRadialRule,quadGridM,  &
+        quadWeightsM)
+      if(options%printResults) then
+        write(iOut,'(1x,A,3x,i12)') 'Lebedev M quadrature',  &
+          SIZE(quadWeightsM)
+        write(iOut,'(3x,A,i0,3x,A,i0,3x,A,es14.6)')  &
+          'lebedevOrder=',options%lebedevOrder,'nRadial=',nRadial,  &
+          'rMaxBohr=',rMaxBohr
+      endIf
+!
+      return
+      end subroutine buildPADLebedevQuadrature
+
+
+!PROCEDURE loadPADLebedevSizingData
+      subroutine loadPADLebedevSizingData(faf,centerCoordsBohr,  &
+        primitiveExponents)
+!
+!     This routine reads shell centers and primitive exponents from the FAF for
+!     default Lebedev radial cutoff selection.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      type(mqc_gaussian_unformatted_matrix_file),intent(inout)::faf
+      real(kind=real64),dimension(:,:),allocatable,intent(out)::centerCoordsBohr
+      real(kind=real64),dimension(:),allocatable,intent(out)::primitiveExponents
+      integer(kind=int64)::i,nCenters
+      real(kind=real64),dimension(:),allocatable::coordinates
+      type(MQC_Variable)::tmp
+!
+      call faf%getArray('primitive exponents',mqcVarOut=tmp)
+      primitiveExponents = tmp
+      call faf%getArray('coordinates of each shell',mqcVarOut=tmp)
+      coordinates = tmp
+      if(mod(Size(coordinates),3).ne.0)  &
+        call mqc_error('PAD: unexpected shell coordinate array size.')
+      nCenters = Size(coordinates)/3
+      Allocate(centerCoordsBohr(3,nCenters))
+      do i = 1,nCenters
+        centerCoordsBohr(:,i) = coordinates((3*i-2):3*i)
+      endDo
+!
+      return
+      end subroutine loadPADLebedevSizingData
 
 
 !PROCEDURE buildPADLabFrames

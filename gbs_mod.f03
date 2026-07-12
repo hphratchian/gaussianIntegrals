@@ -375,6 +375,88 @@
       end subroutine setup_quadrature_lebedev_spherical
 
 
+!PROCEDURE lebedev_spherical_rmax_from_basis_tail
+      function lebedev_spherical_rmax_from_basis_tail(originBohr,  &
+        centerCoordsBohr,primitiveExponents,tailTol) result(rMaxBohr)
+!
+!     This function estimates a spherical-grid radial cutoff from the largest
+!     center distance from the origin plus a Gaussian primitive tail buffer.
+!     Coordinates are in bohr and primitive exponents are in bohr**-2.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      real(kind=real64),dimension(3),intent(in)::originBohr
+      real(kind=real64),dimension(:,:),intent(in)::centerCoordsBohr
+      real(kind=real64),dimension(:),intent(in)::primitiveExponents
+      real(kind=real64),intent(in)::tailTol
+      real(kind=real64)::rMaxBohr
+      integer(kind=int64)::i
+      real(kind=real64)::alphaMin,centerRadius,maxCenterRadius,tailBufferBohr
+!
+      if(Size(centerCoordsBohr,1).ne.3)  &
+        call mqc_error('lebedev_spherical_rmax_from_basis_tail: centerCoordsBohr must be 3 by n.')
+      if(Size(centerCoordsBohr,2).lt.1)  &
+        call mqc_error('lebedev_spherical_rmax_from_basis_tail: no centers supplied.')
+      if(Size(primitiveExponents).lt.1)  &
+        call mqc_error('lebedev_spherical_rmax_from_basis_tail: no primitive exponents supplied.')
+      if(tailTol.le.mqc_float(0).or.tailTol.ge.mqc_float(1))  &
+        call mqc_error('lebedev_spherical_rmax_from_basis_tail: tailTol must be between 0 and 1.')
+      alphaMin = MINVAL(primitiveExponents)
+      if(alphaMin.le.mqc_small)  &
+        call mqc_error('lebedev_spherical_rmax_from_basis_tail: primitive exponents must be positive.')
+!
+      maxCenterRadius = mqc_float(0)
+      do i = 1,Size(centerCoordsBohr,2)
+        centerRadius = sqrt(dot_product(centerCoordsBohr(:,i)-originBohr,  &
+          centerCoordsBohr(:,i)-originBohr))
+        maxCenterRadius = max(maxCenterRadius,centerRadius)
+      endDo
+      tailBufferBohr = sqrt(-log(tailTol)/alphaMin)
+      rMaxBohr = maxCenterRadius+tailBufferBohr
+!
+      return
+      end function lebedev_spherical_rmax_from_basis_tail
+
+
+!PROCEDURE lebedev_spherical_nradial_from_k
+      function lebedev_spherical_nradial_from_k(rMaxBohr,kMag,  &
+        pointsPerWavelength,minRadialPoints) result(nRadial)
+!
+!     This function estimates the number of radial points needed to resolve a
+!     plane wave over 0 <= r <= rMaxBohr using a requested number of points per
+!     de Broglie wavelength. kMag is in atomic units.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      real(kind=real64),intent(in)::rMaxBohr,kMag,pointsPerWavelength
+      integer(kind=int64),intent(in)::minRadialPoints
+      integer(kind=int64)::nFromK,nRadial
+      real(kind=real64)::drMaxBohr,wavelengthBohr
+!
+      if(rMaxBohr.le.mqc_float(0))  &
+        call mqc_error('lebedev_spherical_nradial_from_k: rMaxBohr must be positive.')
+      if(pointsPerWavelength.le.mqc_float(0))  &
+        call mqc_error('lebedev_spherical_nradial_from_k: pointsPerWavelength must be positive.')
+      if(minRadialPoints.lt.1)  &
+        call mqc_error('lebedev_spherical_nradial_from_k: minRadialPoints must be positive.')
+!
+      if(kMag.le.mqc_small) then
+        nRadial = minRadialPoints
+      else
+        wavelengthBohr = mqc_float(2)*Pi/kMag
+        drMaxBohr = wavelengthBohr/pointsPerWavelength
+        nFromK = ceiling(rMaxBohr/drMaxBohr,kind=int64)+1_int64
+        nRadial = max(nFromK,minRadialPoints)
+      endIf
+!
+      return
+      end function lebedev_spherical_nradial_from_k
+
+
 !PROCEDURE addLebedevPoint
       subroutine addLebedevPoint(angularGrid,angularWeights,idx,point,weight)
 !

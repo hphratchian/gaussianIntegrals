@@ -7,7 +7,7 @@
 !
 !     Command line arguments are supplied as -option value pairs:
 !       -faf FILE -dyson-mo N -photon-ev EV -binding-ev EV
-!       [-n-theta N] [-n-grid N] [-pe-type N]
+!       [-n-theta N] [-n-grid N] [-quad faf|cartesian|lebedev] [-pe-type N]
 !       [-lab-frame cartesian|sphere|axisymmetric]
 !       [-lab-theta N] [-lab-phi N] [-lab-alignment A] [-n-chi N]
 !     Programmatic callers may also use PAD_LAB_FRAMES_CUSTOM=-1 with

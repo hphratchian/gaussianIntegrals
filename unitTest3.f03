@@ -37,6 +37,7 @@
         801_int64,26_int64,1.0e-5_real64)
       call runSphericalProductCase('gauss-legendre',  &
         QUAD_RADIAL_GAUSS_LEGENDRE,6_int64,26_int64,1.0e-10_real64)
+      call runRadialSizingCase()
 !
       write(iOut,2999)
 !
@@ -146,6 +147,55 @@
 !
       return
       end subroutine runSphericalProductCase
+
+
+!PROCEDURE runRadialSizingCase
+      subroutine runRadialSizingCase()
+!
+!     This routine checks automatic radial cutoff and radial point-count helper
+!     formulas for future Lebedev PAD quadrature selection.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      integer(kind=int64)::nRadial
+      real(kind=real64)::alphaMin,expectedRMaxBohr,kMag,  &
+        pointsPerWavelength,rMaxBohr,tailTol
+      real(kind=real64),dimension(3)::originBohr
+      real(kind=real64),dimension(3,2)::centerCoordsBohr
+      real(kind=real64),dimension(3)::primitiveExponents
+!
+      originBohr = [ mqc_float(0),mqc_float(0),mqc_float(0) ]
+      centerCoordsBohr(:,1) = [ mqc_float(1),mqc_float(0),mqc_float(0) ]
+      centerCoordsBohr(:,2) = [ mqc_float(0),mqc_float(3),mqc_float(4) ]
+      primitiveExponents = [ mqc_float(2),mqc_float(1),  &
+        mqc_float(1)/mqc_float(4) ]
+      alphaMin = mqc_float(1)/mqc_float(4)
+      tailTol = 1.0e-8_real64
+      expectedRMaxBohr = mqc_float(5)+sqrt(-log(tailTol)/alphaMin)
+      rMaxBohr = lebedev_spherical_rmax_from_basis_tail(originBohr,  &
+        centerCoordsBohr,primitiveExponents,tailTol)
+      call assertNear(rMaxBohr,expectedRMaxBohr,1.0e-10_real64,  &
+        'Lebedev radial tail rMax')
+!
+      kMag = Pi
+      pointsPerWavelength = mqc_float(8)
+      nRadial = lebedev_spherical_nradial_from_k(mqc_float(3),kMag,  &
+        pointsPerWavelength,5_int64)
+      if(nRadial.ne.13_int64) then
+        write(iOut,*)' nRadial = ',nRadial
+        call mqc_error('unitTest3: unexpected k-derived nRadial.')
+      endIf
+      nRadial = lebedev_spherical_nradial_from_k(mqc_float(3),  &
+        mqc_float(0),pointsPerWavelength,7_int64)
+      if(nRadial.ne.7_int64) then
+        write(iOut,*)' nRadial = ',nRadial
+        call mqc_error('unitTest3: zero-k nRadial should use minimum.')
+      endIf
+!
+      return
+      end subroutine runRadialSizingCase
 
 
 !PROCEDURE assertNear
