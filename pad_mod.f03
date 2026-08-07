@@ -5,7 +5,12 @@
       use iso_fortran_env
       use omp_lib
       use mqc_general
-      use mqc_integrals1
+
+!hph+
+!      use mqc_integrals1
+      use mqc_integrals
+!hph-
+
       use mqc_gaussian
       use memory_utils
       use gbs_mod
@@ -25,7 +30,7 @@
 !     The pad_options object collects user-facing and model-control options for
 !     a PAD calculation. The photon and binding energies are supplied in eV.
       type pad_options
-        integer(kind=int64)::dysonMOIndex=1_int64
+        integer(kind=int64)::dysonMOIndex=0_int64
         integer(kind=int64)::nGridPointsTheta=5_int64
         integer(kind=int64)::nGridPointsM=101_int64
         integer(kind=int64)::nChi=36_int64
@@ -58,6 +63,9 @@
         integer(kind=int64)::nLabFrames=0_int64
         integer(kind=int64)::nTheta=0_int64
         integer(kind=int64)::nChi=0_int64
+        integer(kind=int64),dimension(4)::ddnoParticleHoleCounts=0_int64
+        logical::dysonFromDDNO=.false.
+        character(len=64)::dysonSourceLabel=''
         real(kind=real64)::photoelectronEnergyEV=0.0_real64
         real(kind=real64)::photoelectronEnergyHartree=0.0_real64
         real(kind=real64)::kMag=0.0_real64
@@ -177,6 +185,8 @@
         call mqc_error('PAD expects 4-11 command line arguments.')
       call get_command_argument(1,fafName)
       call mqc_get_command_argument_integer(2,options%dysonMOIndex)
+      if(options%dysonMOIndex.eq.0)  &
+        call mqc_error('PAD: legacy positional MO index must be nonzero.')
       call mqc_get_command_argument_real(3,options%photonEnergyEV)
       call mqc_get_command_argument_real(4,options%bindingEnergyEV)
       if(nCommandLineArgs.ge.5) then
@@ -254,7 +264,8 @@
       endDo
 !
       if(.not.gotFaf) call mqc_error('PAD: missing required -faf option.')
-      if(.not.gotMO) call mqc_error('PAD: missing required -dyson-mo option.')
+      if(gotMO.and.options%dysonMOIndex.eq.0)  &
+        call mqc_error('PAD: an explicitly requested -dyson-mo must be nonzero.')
       if(.not.gotPhotonEV)  &
         call mqc_error('PAD: missing required -photon-ev option.')
       if(.not.gotBindingEV)  &
@@ -479,7 +490,7 @@
       implicit none
 !
       write(iOut,'(1x,A)')  &
-        'Usage: ./pad.exe -faf FILE -dyson-mo N -photon-ev EV -binding-ev EV'
+        'Usage: ./pad.exe -faf FILE [-dyson-mo N] -photon-ev EV -binding-ev EV'
       write(iOut,'(8x,A)')  &
         '[-n-theta N] [-n-grid N] [-quad faf|cartesian|lebedev] [-pe-type N]'
       write(iOut,'(8x,A)')  &
@@ -488,6 +499,8 @@
         '[-lab-alignment A] [-n-chi N] [-lmax N] [-threads N]'
       write(iOut,'(1x,A)')  &
         'Legacy positional arguments are still accepted.'
+      write(iOut,'(1x,A)')  &
+        'Omit -dyson-mo for DDNO data; positive N selects alpha and negative N beta.'
 !
       return
       end subroutine padPrintUsage
@@ -540,7 +553,7 @@
 !
       write(iOut,1000)
       write(iOut,1010) TRIM(fafName)
-      write(iOut,1020) options%dysonMOIndex
+      if(options%dysonMOIndex.ne.0) write(iOut,1020) options%dysonMOIndex
       write(iOut,1030) options%photonEnergyEV
       write(iOut,1040) options%bindingEnergyEV
       write(iOut,1050) options%nGridPointsTheta,options%nGridPointsM,  &
@@ -552,6 +565,172 @@
 !
       return
       end subroutine padPrintReproducibleCommand
+
+
+!PROCEDURE loadPADDysonOrbital
+      subroutine loadPADDysonOrbital(faf,dysonMOIndex,nBasis,dysonOrbital,  &
+        sourceLabel,ddnoParticleHoleCounts)
+!
+!     This routine resolves the Dyson-orbital coefficient source on an FAF.
+!     A positive MO index selects an alpha MO column, a negative index selects
+!     a beta MO column, and zero selects the one-hole DDNO result identified by
+!     the labeled DDNO integer metadata.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      type(mqc_gaussian_unformatted_matrix_file),intent(inout)::faf
+      integer(kind=int64),intent(in)::dysonMOIndex,nBasis
+      type(MQC_Variable),intent(out)::dysonOrbital
+      character(len=64),intent(out)::sourceLabel
+      integer(kind=int64),dimension(4),intent(out)::ddnoParticleHoleCounts
+!
+      integer(kind=int64)::i,moIndex
+      integer(kind=int64),dimension(:),allocatable::metadataIntegers
+      character(len=64)::recordLabel
+      character(len=:),dimension(:),allocatable::metadataIntegerLabels
+      type(MQC_Variable)::metadataIntegerLabelsVar,metadataIntegersVar,tmp
+!
+      sourceLabel = ''
+      ddnoParticleHoleCounts = 0_int64
+!
+!     An explicitly selected MO is stored as one column of the corresponding
+!     alpha or beta MO coefficient matrix.
+!
+      if(dysonMOIndex.ne.0) then
+        if(dysonMOIndex.gt.0) then
+          recordLabel = 'ALPHA MO COEFFICIENTS'
+          moIndex = dysonMOIndex
+        else
+          recordLabel = 'BETA MO COEFFICIENTS'
+          moIndex = -dysonMOIndex
+        endIf
+        call faf%getArray(TRIM(recordLabel),mqcVarOut=tmp)
+        if(tmp%getRank().ne.2)  &
+          call mqc_error('PAD: MO coefficient FAF record must be rank 2.')
+        if(TRIM(tmp%getType()).ne.'REAL')  &
+          call mqc_error('PAD: MO coefficient FAF record must be real.')
+        if(Size(tmp,1).ne.nBasis)  &
+          call mqc_error('PAD: MO coefficient AO dimension does not match basis.')
+        if(moIndex.lt.1.or.moIndex.gt.Size(tmp,2))  &
+          call mqc_error('PAD: requested Dyson MO index is out of range.')
+        dysonOrbital = tmp%column(moIndex)
+        write(sourceLabel,'(A,", column ",i0)') TRIM(recordLabel),moIndex
+!
+!     Without an explicit MO selection, use the labeled DDNO metadata to find
+!     the unique alpha- or beta-hole result appropriate to photodetachment.
+!
+      else
+        call faf%getArray('DDNO: METADATA INTEGERS LABELS',  &
+          mqcVarOut=metadataIntegerLabelsVar)
+        call faf%getArray('DDNO: METADATA INTEGERS',  &
+          mqcVarOut=metadataIntegersVar)
+        if(metadataIntegerLabelsVar%getRank().ne.1.or.  &
+          metadataIntegersVar%getRank().ne.1)  &
+          call mqc_error('PAD: DDNO integer metadata and labels must be vectors.')
+        if(TRIM(metadataIntegerLabelsVar%getType()).ne.'CHARACTER')  &
+          call mqc_error('PAD: DDNO integer metadata labels must be character.')
+        if(TRIM(metadataIntegersVar%getType()).ne.'INTEGER')  &
+          call mqc_error('PAD: DDNO integer metadata must be integer.')
+        if(Size(metadataIntegerLabelsVar).ne.Size(metadataIntegersVar))  &
+          call mqc_error('PAD: DDNO integer metadata and label sizes differ.')
+        metadataIntegerLabels = metadataIntegerLabelsVar
+        metadataIntegers = metadataIntegersVar
+        i = padFindDDNOMetadataLabel(metadataIntegerLabels,  &
+          'No. Alpha Particle(s)')
+        ddnoParticleHoleCounts(1) = metadataIntegers(i)
+        i = padFindDDNOMetadataLabel(metadataIntegerLabels,  &
+          'No. Beta Particle(s)')
+        ddnoParticleHoleCounts(2) = metadataIntegers(i)
+        i = padFindDDNOMetadataLabel(metadataIntegerLabels,  &
+          'No. Alpha Hole(s)')
+        ddnoParticleHoleCounts(3) = metadataIntegers(i)
+        i = padFindDDNOMetadataLabel(metadataIntegerLabels,  &
+          'No. Beta Hole(s)')
+        ddnoParticleHoleCounts(4) = metadataIntegers(i)
+        call padSelectDDNOHoleRecord(ddnoParticleHoleCounts,recordLabel)
+        call faf%getArray(TRIM(recordLabel),mqcVarOut=dysonOrbital)
+        sourceLabel = recordLabel
+      endIf
+!
+!     Both source paths must resolve to one real AO coefficient vector.
+!
+      if(dysonOrbital%getRank().ne.1)  &
+        call mqc_error('PAD: resolved Dyson orbital must be a rank-1 vector.')
+      if(TRIM(dysonOrbital%getType()).ne.'REAL')  &
+        call mqc_error('PAD: resolved Dyson orbital coefficients must be real.')
+      if(Size(dysonOrbital).ne.nBasis)  &
+        call mqc_error('PAD: Dyson orbital size does not match the AO basis.')
+!
+      return
+      end subroutine loadPADDysonOrbital
+
+
+!PROCEDURE padFindDDNOMetadataLabel
+      function padFindDDNOMetadataLabel(metadataLabels,targetLabel)  &
+        result(labelIndex)
+!
+!     This function locates one semantic DDNO metadata label after removing
+!     punctuation, spaces, and case distinctions while tolerating the printed
+!     numeric prefix.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      character(len=*),dimension(:),intent(in)::metadataLabels
+      character(len=*),intent(in)::targetLabel
+      integer(kind=int64)::i,labelIndex
+      character(len=64)::labelKey,targetKey
+!
+      call padOptionKey(targetLabel,targetKey)
+      labelIndex = 0_int64
+      do i = 1,Size(metadataLabels)
+        call padOptionKey(metadataLabels(i),labelKey)
+        if(INDEX(TRIM(labelKey),TRIM(targetKey)).gt.0) then
+          if(labelIndex.ne.0)  &
+            call mqc_error('PAD: duplicate semantic label in DDNO metadata.')
+          labelIndex = i
+        endIf
+      endDo
+      if(labelIndex.eq.0)  &
+        call mqc_error('PAD: required semantic label is missing from DDNO metadata.')
+!
+      return
+      end function padFindDDNOMetadataLabel
+
+
+!PROCEDURE padSelectDDNOHoleRecord
+      subroutine padSelectDDNOHoleRecord(particleHoleCounts,recordLabel)
+!
+!     This routine validates that DDNO metadata describes exactly one alpha or
+!     beta hole and returns the corresponding FAF record label. Particle-only
+!     attachment and multielectron processes are not valid PAD inputs.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      integer(kind=int64),dimension(4),intent(in)::particleHoleCounts
+      character(len=64),intent(out)::recordLabel
+!
+      if(ANY(particleHoleCounts.lt.0))  &
+        call mqc_error('PAD: DDNO particle and hole counts must be nonnegative.')
+      if(SUM(particleHoleCounts).ne.1)  &
+        call mqc_error('PAD: DDNO metadata must describe exactly one particle or hole.')
+      if(SUM(particleHoleCounts(1:2)).ne.0)  &
+        call mqc_error('PAD: DDNO particle data describe attachment, not photodetachment.')
+      if(particleHoleCounts(3).eq.1) then
+        recordLabel = 'DDNO: ALPHA HOLES'
+      elseIf(particleHoleCounts(4).eq.1) then
+        recordLabel = 'DDNO: BETA HOLES'
+      else
+        call mqc_error('PAD: DDNO metadata does not identify an alpha or beta hole.')
+      endIf
+!
+      return
+      end subroutine padSelectDDNOHoleRecord
 
 !
 !PROCEDURE padComputePhotoelectronEnergyAndK
@@ -613,11 +792,11 @@
       real(kind=real64),dimension(:),allocatable::lWeights0,lWeights90,  &
         lWeights0Tmp,lWeights90Tmp
       real(kind=real64),dimension(:),allocatable::quadWeightsM,  &
-        MSquaredList
-      real(kind=real64),dimension(:,:),allocatable::quadGridM,moCoeffs
+        MSquaredList,dysonCoeffs
+      real(kind=real64),dimension(:,:),allocatable::quadGridM
       logical::foundTheta90
-      type(mqc_basisset)::basisSet
-      type(MQC_Variable)::tmp
+      type(mqc_gtoBasisSet)::basisSet
+      type(MQC_Variable)::dysonOrbital
 !
  1100 format(/,1x,'Lab frame ',i4,': epsilon = (',f7.3,',',f7.3,',',f7.3,')',  &
         '  reference k-plane vector = (',f7.3,',',f7.3,',',f7.3,')')
@@ -629,6 +808,9 @@
  1250 format(1x,'Lab-frame model flag   = ',i3)
  1260 format(1x,'Lab-frame orientations = ',i8,3x,'weight sum = ',es14.6)
  1270 format(1x,'Chi quadrature points  = ',i8,3x,'weight sum = ',es14.6)
+ 1280 format(1x,'Dyson orbital source   = ',A)
+ 1290 format(1x,'DDNO counts (alpha particles, beta particles, alpha holes,',  &
+        ' beta holes) = ',4(i0,1x))
   2000 format(1x,'Data for the ',A,' grid:',/,  &
         3x,'nPoints = ',i15,' step size = ',f20.5)
  2010 format(1x,'Data for the ',A,' grid:',/,3x,'nPoints = ',i15)
@@ -663,8 +845,6 @@
 !
 !     Validate user/model options and compute the photoelectron kinematics.
 !
-      if(options%dysonMOIndex.lt.1)  &
-        call mqc_error('PAD: requested Dyson orbital index is out of range.')
       if(options%nGridPointsTheta.lt.2)  &
         call mqc_error('PAD: nGridPointsTheta must be at least 2.')
       if(options%nGridPointsM.lt.2)  &
@@ -739,13 +919,20 @@
       results%intensityTheta = mqc_float(0)
       results%averageIntensityTheta = mqc_float(0)
 !
-!     Read the basis set and MO coefficients from the FAF.
+!     Read the basis set and resolve one Dyson-orbital coefficient vector from
+!     either a signed alpha/beta MO selection or the labeled DDNO hole data.
 !
-      call loadGaussianBasisSet(faf,basisSet)
-      call faf%getArray('ALPHA MO COEFFICIENTS',mqcVarOut=tmp)
-      moCoeffs = tmp
-      if(options%dysonMOIndex.gt.Size(moCoeffs,2))  &
-        call mqc_error('PAD: requested Dyson orbital index is out of range.')
+      call loadGTOBasisSet(faf,basisSet)
+      call loadPADDysonOrbital(faf,options%dysonMOIndex,basisSet%nBasis,  &
+        dysonOrbital,results%dysonSourceLabel,  &
+        results%ddnoParticleHoleCounts)
+      results%dysonFromDDNO = options%dysonMOIndex.eq.0
+      dysonCoeffs = dysonOrbital
+      if(options%printResults) then
+        write(iOut,1280) TRIM(results%dysonSourceLabel)
+        if(results%dysonFromDDNO) write(iOut,1290)  &
+          results%ddnoParticleHoleCounts
+      endIf
 !
 !     Build the selected matrix-element quadrature grid.
 !
@@ -781,7 +968,7 @@
 !
       tStart1 = omp_get_wtime()
       results%dysonSelfOverlap = moInnerProductNumericalIntegration(  &
-        moCoeffs(:,options%dysonMOIndex),quadGridM,quadWeightsM,basisSet)
+        dysonCoeffs,quadGridM,quadWeightsM,basisSet)
       if(options%printResults) write(iOut,2500) results%dysonSelfOverlap
       tEnd1 = omp_get_wtime()
       if(options%printResults) write(iOut,8998) 'norm test',tEnd1-tStart1
@@ -815,7 +1002,7 @@
             tStart2 = omp_get_wtime()
             MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
               results%theta,results%kMag,epsilonVec,uChi,  &
-              moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
+              dysonCoeffs,basisSet,quadGridM,  &
               quadWeightsM)
             tEnd2 = omp_get_wtime()
             timeThetaList = timeThetaList+tEnd2-tStart2
@@ -826,7 +1013,7 @@
               tStart2 = omp_get_wtime()
               MSquared90 = dysonPlaneWaveMatrixElementSquared(  &
                 Pi/mqc_float(2),results%kMag,epsilonVec,uChi,  &
-                moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
+                dysonCoeffs,basisSet,quadGridM,  &
                 quadWeightsM)
               tEnd2 = omp_get_wtime()
               timeSingleAngles = timeSingleAngles+tEnd2-tStart2
@@ -835,18 +1022,18 @@
             tStart2 = omp_get_wtime()
             call dysonMatrixElement1Angle(options%iPEType,options%lMax,  &
               mqc_float(0),results%kMag,epsilonVec,uChi,  &
-              moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
+              dysonCoeffs,basisSet,quadGridM,  &
               quadWeightsM,MSquared0,lWeights0Tmp)
             call dysonMatrixElement1Angle(options%iPEType,options%lMax,  &
               Pi/mqc_float(2),results%kMag,epsilonVec,uChi,  &
-              moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
+              dysonCoeffs,basisSet,quadGridM,  &
               quadWeightsM,MSquared90,lWeights90Tmp)
             tEnd2 = omp_get_wtime()
             timeSingleAngles = timeSingleAngles+tEnd2-tStart2
             tStart2 = omp_get_wtime()
             call dysonMatrixElementThetaList(options%iPEType,options%lMax,  &
               results%theta,results%kMag,epsilonVec,uChi,  &
-              moCoeffs(:,options%dysonMOIndex),basisSet,quadGridM,  &
+              dysonCoeffs,basisSet,quadGridM,  &
               quadWeightsM,MSquaredList)
             tEnd2 = omp_get_wtime()
             timeThetaList = timeThetaList+tEnd2-tStart2

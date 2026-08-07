@@ -6,7 +6,12 @@
       use iso_fortran_env
       use omp_lib
       use mqc_general
-      use mqc_integrals1
+
+!hph+
+!      use mqc_integrals1
+      use mqc_integrals
+!hph-
+
       use mqc_gaussian
       use memory_utils
 !
@@ -46,7 +51,7 @@
       real(kind=real64),dimension(:),intent(in)::dysonCoeffs,  &
         quadratureWeights
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
-      class(mqc_basisSet),intent(in)::aoBasisSet
+      class(mqc_gtoBasisSet),intent(in)::aoBasisSet
       real(kind=real64)::MSquared
 !
       integer(kind=int64)::i
@@ -100,7 +105,7 @@
       real(kind=real64),dimension(:),intent(in)::thetaList,dysonCoeffs,  &
         quadratureWeights
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
-      class(mqc_basisSet),intent(in)::aoBasisSet
+      class(mqc_gtoBasisSet),intent(in)::aoBasisSet
       real(kind=real64),dimension(:),allocatable::MSquared
 !
       integer(kind=int64)::i,j,nTheta,nGrid
@@ -194,7 +199,7 @@
       real(kind=real64),dimension(:),intent(in)::phiList,thetaList,  &
         dysonCoeffs,quadratureWeights
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
-      class(mqc_basisSet),intent(in)::aoBasisSet
+      class(mqc_gtoBasisSet),intent(in)::aoBasisSet
       real(kind=real64),dimension(:,:),allocatable::MSquared
 !
       integer(kind=int64)::i,j,k,nPhi,nTheta,nGrid
@@ -407,7 +412,7 @@
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
       real(kind=real64),intent(out)::MSquared
       real(kind=real64),dimension(0:),intent(out)::lWeights
-      class(mqc_basisSet),intent(in)::aoBasisSet
+      class(mqc_gtoBasisSet),intent(in)::aoBasisSet
 !
       integer(kind=int64)::i,l,m
       real(kind=real64)::r,thetaVal,phiVal,w,j_l,dysonVal,  &
@@ -525,7 +530,7 @@
       real(kind=real64),dimension(:),intent(out)::Itheta
       real(kind=real64),dimension(0:),optional,intent(out)::lWeights
       real(kind=real64),dimension(0:,:),optional,intent(out)::lWeightsTheta
-      class(mqc_basisSet),intent(in)::aoBasisSet
+      class(mqc_gtoBasisSet),intent(in)::aoBasisSet
 !
       integer(kind=int64)::iTh,l,nTh
       real(kind=real64)::theta,MSq,Itot

@@ -5,7 +5,12 @@
 !
       use iso_fortran_env
       use mqc_general
-      use mqc_integrals1
+
+!hph+
+!      use mqc_integrals1
+      use mqc_integrals
+!hph-
+
       use mqc_gaussian
       use memory_utils
 !
@@ -17,97 +22,101 @@
 !
 !
       CONTAINS
-!
-!PROCEDURE
-      subroutine loadGaussianBasisSet(faf,basisSet)
-!
-!     This routine reads a basis set from the Gaussian Fortran Array File (FAF)
-!     sent as <faf> and loads it into argument <basisSet>. The basisSet argument
-!     should be an MQC_BasisSet object.
-!
-!     H. P. Hratchian, 2025.
-!
-!
-      implicit none
-      type(mqc_gaussian_unformatted_matrix_file)::faf
-      type(MQC_basisSet)::basisSet
-      integer(kind=int64)::i,iCurrentPrim,nBasis,nShells,nPrims,  &
-        nShellsFull
-      integer(kind=int64),dimension(:),allocatable::shellToAtomMap,  &
-        shellTypes,nPrimsPerShell
-      real(kind=real64),dimension(:),allocatable::primitiveExponents,  &
-        contractionCoefficients,contractionCoefficientsP,coordinates
-      type(MQC_Variable)::tmp
-!
- 1000 format(/,1x,'Data in loadGaussianBasisSet',/,  &
-        3x,'nBasis=',i6,3x,'nShells=',i6,3x,'nPrims=',i6,/)
-!
-!     Get the key parameters of the basis set on the FAF.
-!
-      nBasis = faf%getVal('nBasis')
-      nShells = faf%getVal('nShlAO')
-      nPrims = faf%getVal('nPrmAO')
-      write(iOut,1000) nBasis,nShells,nPrims
-!
-!     Read in the shell info from faf so we can load basisSet.
-!
-      call faf%getArray('shell to atom map',mqcVarOut=tmp)
-      shellToAtomMap = tmp
-      call faf%getArray('shell types',mqcVarOut=tmp)
-      shellTypes = tmp
-      call faf%getArray('number of primitives per shell',mqcVarOut=tmp)
-      nPrimsPerShell = tmp
-      call faf%getArray('primitive exponents',mqcVarOut=tmp)
-      primitiveExponents = tmp
-      call faf%getArray('contraction coefficients',mqcVarOut=tmp)
-      contractionCoefficients = tmp
-      call faf%getArray('P(S=P) CONTRACTION COEFFICIENTS',mqcVarOut=tmp)
-      contractionCoefficientsP = tmp
-      call faf%getArray('coordinates of each shell',mqcVarOut=tmp)
-      coordinates = tmp
-!
-!     Figure out the value of nShellsFull...
-!
-      nShellsFull = 0
-      do i = 1,nShells
-        if(shellTypes(i).ge.0) then
-          nShellsFull = nShellsFull+1
-        elseIf(shellTypes(i).eq.-1) then
-          nShellsFull = nShellsFull+4
-        else
-          write(iOut,*)' shellTypes(i) = ',shellTypes(i)
-          call mqc_error('Invalid shell type in loadGaussianBasisSet.')
-        endIf
-      endDo
-      call basisSet%init(nShellsFull)
-!
-!     Initiate the basis set object and then fill it.
-!
-      iCurrentPrim = 1
-      do i = 1,nShells
-        if(shellTypes(i).ge.0) then
-          nShellsFull = nShellsFull+1
-          call MQC_basisSet_addShell(basisSet,shellTypes(i),  &
-            coordinates((3*i-2):3*i),  &
-            contractionCoefficients(iCurrentPrim:iCurrentPrim+nPrimsPerShell(i)-1),  &
-            primitiveExponents(iCurrentPrim:iCurrentPrim+nPrimsPerShell(i)-1))
-        elseIf(shellTypes(i).eq.-1) then
-          nShellsFull = nShellsFull+1
-          call MQC_basisSet_addShell(basisSet,0,coordinates((3*i-2):3*i),  &
-            contractionCoefficients(iCurrentPrim:iCurrentPrim+nPrimsPerShell(i)-1),  &
-            primitiveExponents(iCurrentPrim:iCurrentPrim+nPrimsPerShell(i)-1))
-          nShellsFull = nShellsFull+3
-          call MQC_basisSet_addShell(basisSet,1,coordinates((3*i-2):3*i),  &
-            contractionCoefficientsP(iCurrentPrim:iCurrentPrim+nPrimsPerShell(i)-1),  &
-            primitiveExponents(iCurrentPrim:iCurrentPrim+nPrimsPerShell(i)-1))
-        else
-          call mqc_error('Invalid shell type in loadGaussianBasisSet.')
-        endIf
-        iCurrentPrim = iCurrentPrim+nPrimsPerShell(i)
-      endDo
-!
-      return
-      end subroutine loadGaussianBasisSet
+
+!hph+
+!!
+!!PROCEDURE
+!      subroutine loadGaussianBasisSet(faf,basisSet)
+!!
+!!     This routine reads a basis set from the Gaussian Fortran Array File (FAF)
+!!     sent as <faf> and loads it into argument <basisSet>. The basisSet argument
+!!     should be an MQC_BasisSet object.
+!!
+!!     H. P. Hratchian, 2025.
+!!
+!!
+!      implicit none
+!      type(mqc_gaussian_unformatted_matrix_file)::faf
+!      type(MQC_basisSet)::basisSet
+!      integer(kind=int64)::i,iCurrentPrim,nBasis,nShells,nPrims,  &
+!        nShellsFull
+!      integer(kind=int64),dimension(:),allocatable::shellToAtomMap,  &
+!        shellTypes,nPrimsPerShell
+!      real(kind=real64),dimension(:),allocatable::primitiveExponents,  &
+!        contractionCoefficients,contractionCoefficientsP,coordinates
+!      type(MQC_Variable)::tmp
+!!
+! 1000 format(/,1x,'Data in loadGaussianBasisSet',/,  &
+!        3x,'nBasis=',i6,3x,'nShells=',i6,3x,'nPrims=',i6,/)
+!!
+!!     Get the key parameters of the basis set on the FAF.
+!!
+!      nBasis = faf%getVal('nBasis')
+!      nShells = faf%getVal('nShlAO')
+!      nPrims = faf%getVal('nPrmAO')
+!      write(iOut,1000) nBasis,nShells,nPrims
+!!
+!!     Read in the shell info from faf so we can load basisSet.
+!!
+!      call faf%getArray('shell to atom map',mqcVarOut=tmp)
+!      shellToAtomMap = tmp
+!      call faf%getArray('shell types',mqcVarOut=tmp)
+!      shellTypes = tmp
+!      call faf%getArray('number of primitives per shell',mqcVarOut=tmp)
+!      nPrimsPerShell = tmp
+!      call faf%getArray('primitive exponents',mqcVarOut=tmp)
+!      primitiveExponents = tmp
+!      call faf%getArray('contraction coefficients',mqcVarOut=tmp)
+!      contractionCoefficients = tmp
+!      call faf%getArray('P(S=P) CONTRACTION COEFFICIENTS',mqcVarOut=tmp)
+!      contractionCoefficientsP = tmp
+!      call faf%getArray('coordinates of each shell',mqcVarOut=tmp)
+!      coordinates = tmp
+!!
+!!     Figure out the value of nShellsFull...
+!!
+!      nShellsFull = 0
+!      do i = 1,nShells
+!        if(shellTypes(i).ge.0) then
+!          nShellsFull = nShellsFull+1
+!        elseIf(shellTypes(i).eq.-1) then
+!          nShellsFull = nShellsFull+4
+!        else
+!          write(iOut,*)' shellTypes(i) = ',shellTypes(i)
+!          call mqc_error('Invalid shell type in loadGaussianBasisSet.')
+!        endIf
+!      endDo
+!      call basisSet%init(nShellsFull)
+!!
+!!     Initiate the basis set object and then fill it.
+!!
+!      iCurrentPrim = 1
+!      do i = 1,nShells
+!        if(shellTypes(i).ge.0) then
+!          nShellsFull = nShellsFull+1
+!          call MQC_basisSet_addShell(basisSet,shellTypes(i),  &
+!            coordinates((3*i-2):3*i),  &
+!            contractionCoefficients(iCurrentPrim:iCurrentPrim+nPrimsPerShell(i)-1),  &
+!            primitiveExponents(iCurrentPrim:iCurrentPrim+nPrimsPerShell(i)-1))
+!        elseIf(shellTypes(i).eq.-1) then
+!          nShellsFull = nShellsFull+1
+!          call MQC_basisSet_addShell(basisSet,0,coordinates((3*i-2):3*i),  &
+!            contractionCoefficients(iCurrentPrim:iCurrentPrim+nPrimsPerShell(i)-1),  &
+!            primitiveExponents(iCurrentPrim:iCurrentPrim+nPrimsPerShell(i)-1))
+!          nShellsFull = nShellsFull+3
+!          call MQC_basisSet_addShell(basisSet,1,coordinates((3*i-2):3*i),  &
+!            contractionCoefficientsP(iCurrentPrim:iCurrentPrim+nPrimsPerShell(i)-1),  &
+!            primitiveExponents(iCurrentPrim:iCurrentPrim+nPrimsPerShell(i)-1))
+!        else
+!          call mqc_error('Invalid shell type in loadGaussianBasisSet.')
+!        endIf
+!        iCurrentPrim = iCurrentPrim+nPrimsPerShell(i)
+!      endDo
+!!
+!      return
+!      end subroutine loadGaussianBasisSet
+!hph-
+
 
 !
 !PROCEDURE setup_quadrature_trapezoid1d
@@ -593,7 +602,7 @@
       implicit none
       real(kind=real64),dimension(:),intent(in)::moCoeffsBra,quadratureWeights
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
-      class(mqc_basisSet),intent(in)::aoBasisSet
+      class(mqc_gtoBasisSet),intent(in)::aoBasisSet
       real(kind=real64),dimension(:),intent(in),optional::moCoeffsKet
       real(kind=real64)::integralValue,localValue,minValue
 !

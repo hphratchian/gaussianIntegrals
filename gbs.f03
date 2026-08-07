@@ -151,7 +151,7 @@ PRINT *, "Thread number:", OMP_GET_THREAD_NUM()
 !
 !     Try reading a basis set from faf.
 !
-      call loadGaussianBasisSet(faf,basisSet)
+      call loadGTOBasisSet(faf,basisSet)
       call basisSet%print(iOut)
       overlapMatrix = basisSetOverlapMatrix(basisSet)
       call mqc_print(overlapMatrix,iOut,header='overlap matrix')

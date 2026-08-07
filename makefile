@@ -56,7 +56,7 @@ endif
 #
 # The 'all' rule.
 #
-all: unitTest1.exe unitTest2.exe unitTest3.exe
+all: unitTest1.exe unitTest2.exe unitTest3.exe unitTest4.exe
 #hph all: basisCounting.exe gbs.exe pad.exe unitTest1.exe
 .PHONY: test test-unit test-pad update-pad-refs
 #
@@ -83,13 +83,20 @@ pad_mod.mod: memory_utils.mod gbs_mod.mod dyson_matrix_elements_mod.mod
 
 test: test-unit test-pad
 
-test-unit: unitTest1.exe unitTest2.exe unitTest3.exe
+test-unit: unitTest1.exe unitTest2.exe unitTest3.exe unitTest4.exe
 	./unitTest1.exe
 	./unitTest2.exe
 	./unitTest2.exe 1 5 8
 	./unitTest2.exe 2 5 8 0.5
 	./unitTest2.exe -1
 	./unitTest3.exe
+	./unitTest4.exe
+	@if ./unitTest4.exe 1 >/dev/null 2>&1; then \
+	  echo "unitTest4: multielectron DDNO input was not rejected"; exit 1; \
+	fi
+	@if ./unitTest4.exe 2 >/dev/null 2>&1; then \
+	  echo "unitTest4: attachment DDNO input was not rejected"; exit 1; \
+	fi
 
 test-pad: pad.exe
 	./scripts/run_pad_tests.sh

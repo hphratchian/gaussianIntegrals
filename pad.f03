@@ -5,8 +5,10 @@
 !     FAF. The production path currently uses a linearly propagating plane-wave
 !     photoelectron in the length-gauge dipole approximation.
 !
-!     Command line arguments are supplied as -option value pairs:
-!       -faf FILE -dyson-mo N -photon-ev EV -binding-ev EV
+!     Command line arguments are supplied as -option value pairs. Omitting
+!     -dyson-mo selects a one-hole DDNO orbital; positive and negative values
+!     select alpha and beta MO columns, respectively:
+!       -faf FILE [-dyson-mo N] -photon-ev EV -binding-ev EV
 !       [-n-theta N] [-n-grid N] [-quad faf|cartesian|lebedev] [-pe-type N]
 !       [-lab-frame cartesian|sphere|axisymmetric]
 !       [-lab-theta N] [-lab-phi N] [-lab-alignment A] [-n-chi N]

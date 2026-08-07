@@ -6,14 +6,18 @@ current production path models an outgoing free electron as a linearly
 propagating plane wave and is intended for gas-phase photodetachment
 simulations where an anion is converted to a neutral molecule plus an electron.
 
-The program reads coefficient and basis-set data from a Gaussian FAF file. It
-selects one coefficient vector from the FAF `ALPHA MO COEFFICIENTS` array as
-the Dyson orbital for a single detachment channel. In the intended workflow, a
-separate code forms the Dyson orbital and writes its coefficients into an FAF
-MO slot. Using that slot provides a convenient interchange format and makes the
-Dyson orbital available to GaussView and other commonly used orbital
-visualization programs; it does not imply that the selected vector is an
-ordinary canonical MO.
+The program reads coefficient and basis-set data from a Gaussian FAF file. By
+default, it expects a DDNO output FAF and uses the labeled DDNO integer metadata
+to select `DDNO: ALPHA HOLES` or `DDNO: BETA HOLES` as the Dyson orbital. The
+metadata must describe exactly one hole and no particles. Alternatively, the
+user can supply `-dyson-mo N`: positive `N` selects column `N` from `ALPHA MO
+COEFFICIENTS`, while negative `N` selects column `abs(N)` from `BETA MO
+COEFFICIENTS`.
+
+The explicit MO-slot path remains useful when a separate code forms a Dyson
+orbital and stores its coefficients in an FAF MO slot for interchange and
+visualization. That storage convention does not imply that the selected vector
+is an ordinary canonical MO.
 
 ## Scientific Model
 
@@ -27,8 +31,8 @@ I(theta)      = |M(k, epsilon)|^2
 
 where:
 
-- `psi_D(r)` is the selected Dyson orbital, supplied through one coefficient
-  slot in the FAF alpha-MO array.
+- `psi_D(r)` is the selected Dyson orbital, supplied through a DDNO hole record
+  or an explicitly selected alpha/beta MO coefficient column.
 - `epsilon` is the electric-field polarization vector.
 - `k` is the outgoing photoelectron wave vector.
 - `theta` is the angle between `epsilon` and `k`.
@@ -62,7 +66,8 @@ To build `pad.exe`, you need:
 - MQCPack installed and available through the `mqcinstall` environment
   variable.
 - BLAS and LAPACK libraries.
-- Gaussian FAF files containing the needed basis and MO data.
+- Gaussian FAF files containing the needed basis data and either compatible
+  DDNO records or the explicitly requested alpha/beta MO coefficient array.
 
 For best numerical integration performance, generate FAF files with a stored
 Gaussian quadrature grid, for example with Gaussian input options similar to:
@@ -94,7 +99,7 @@ make pad.exe
 ```
 
 `make all` builds the current lightweight unit-test executables,
-`unitTest1.exe`, `unitTest2.exe`, and `unitTest3.exe`.
+`unitTest1.exe`, `unitTest2.exe`, `unitTest3.exe`, and `unitTest4.exe`.
 
 ## Test Targets
 
@@ -104,8 +109,9 @@ Run the lightweight unit-style checks with:
 make test-unit
 ```
 
-This runs `unitTest1.exe`, several `unitTest2.exe` lab-frame setup checks, and
-`unitTest3.exe` for the spherical Lebedev product quadrature utilities.
+This runs `unitTest1.exe`, several `unitTest2.exe` lab-frame setup checks,
+`unitTest3.exe` for the spherical Lebedev product quadrature utilities, and
+`unitTest4.exe` for signed-MO and DDNO Dyson-orbital source selection.
 
 Run both the unit-style checks and the PAD regression set with:
 
@@ -146,7 +152,7 @@ make update-pad-refs
 ## Running
 
 ```sh
-./pad.exe -faf FAF_FILE -dyson-mo MO_INDEX -photon-ev PHOTON_EV \
+./pad.exe -faf FAF_FILE [-dyson-mo MO_INDEX] -photon-ev PHOTON_EV \
   -binding-ev BINDING_EV [-n-theta N_THETA] [-n-grid N_GRID] \
   [-quad QUADRATURE_TYPE] [-pe-type I_PE_TYPE] [-lab-frame LAB_FRAME_TYPE] \
   [-lab-theta N_LAB_THETA] [-lab-phi N_LAB_PHI] \
@@ -156,12 +162,19 @@ make update-pad-refs
 Options may be written as `-option value`, `--option value`, or
 `--option=value`.
 
-Required options:
+When `-dyson-mo` is omitted, `pad.exe` reads
+`DDNO: METADATA INTEGERS LABELS` and `DDNO: METADATA INTEGERS`, locates the
+alpha/beta particle and hole counts by their semantic labels, and requires
+exactly one hole with no particles. It then reads either `DDNO: ALPHA HOLES` or
+`DDNO: BETA HOLES`. Missing, malformed, multielectron, or attachment metadata
+terminates the calculation through `mqc_error`.
+
+Core options:
 
 | Option | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `-faf` | yes | none | Gaussian FAF file to read. |
-| `-dyson-mo` | yes | none | Index of the FAF alpha-MO coefficient slot containing the Dyson orbital. |
+| `-dyson-mo` | no | DDNO hole data | Positive `N` selects alpha MO column `N`; negative `N` selects beta MO column `abs(N)`. Zero is invalid when explicitly supplied. |
 | `-photon-ev` | yes | none | Photon energy in eV. |
 | `-binding-ev` | yes | none | Electron binding/detachment energy in eV. |
 
@@ -206,6 +219,9 @@ The older positional form is still accepted for existing scripts:
 ./pad.exe FAF_FILE MO_INDEX PHOTON_EV BINDING_EV [N_THETA] [N_GRID] [I_PE_TYPE] [LAB_FRAME_TYPE] [N_LAB_THETA] [N_LAB_PHI] [N_CHI]
 ```
 
+The positional `MO_INDEX` remains required and must be nonzero. Its sign uses
+the same alpha-positive/beta-negative convention as `-dyson-mo`.
+
 For CLI use, the supported built-in lab-frame models are:
 
 | Model | Numeric value | Meaning |
@@ -231,6 +247,21 @@ k                   = sqrt(2 * E_electron(Hartree))
 `PHOTON_EV` must be greater than `BINDING_EV`.
 
 ## Examples
+
+Run from a compatible one-hole DDNO output FAF, allowing `pad.exe` to select
+the alpha or beta hole record from the labeled metadata:
+
+```sh
+./pad.exe -faf GTests/cn-.ddno.faf -photon-ev 1.100000 \
+  -binding-ev 1.000000 -n-theta 5 -n-grid 21 -quad cart -pe-type 0
+```
+
+Select beta MO column 2 explicitly:
+
+```sh
+./pad.exe -faf FAF_FILE -dyson-mo -2 -photon-ev 1.100000 \
+  -binding-ev 1.000000 -n-theta 5 -n-grid 21 -quad cart -pe-type 0
+```
 
 Run a plane-wave PAD calculation using an FAF with a stored quadrature grid:
 
@@ -296,6 +327,8 @@ For each lab-frame orientation, `pad.exe` prints:
 - The lab-frame model flag, number of lab-frame orientations, and orientation
   weight sum.
 - The chi quadrature size and chi-weight sum.
+- The selected Dyson-orbital FAF record and MO column, when applicable.
+- The four DDNO alpha/beta particle/hole counts for DDNO-driven calculations.
 - The electric-field polarization vector, `epsilon`.
 - The reference perpendicular vector used to define the chi-rotated scan
   planes.
@@ -332,8 +365,14 @@ call runPADCalculation(faf,options,results)
 where `results` is a `pad_results` object containing the computed kinetic
 energy, `k`, theta and chi grids, PAD intensities, theta-integrated
 intensities, beta values, solid-angle integrated intensities, and lab-frame
-vectors. The command-line program `pad.f03` is now a thin wrapper around this
-driver.
+vectors. It also records `dysonSourceLabel`, `dysonFromDDNO`, and the four
+`ddnoParticleHoleCounts` in alpha-particle, beta-particle, alpha-hole,
+beta-hole order. The command-line program `pad.f03` is now a thin wrapper
+around this driver.
+
+For programmatic source selection, `pad_options%dysonMOIndex=0` requests DDNO
+metadata (the default), a positive value selects an alpha MO column, and a
+negative value selects the corresponding beta MO column.
 
 The `pad_options%labFrameType` field controls how the lab-frame vectors are
 generated:
@@ -428,4 +467,14 @@ the plane-wave wavelength:
 ```sh
 make unitTest3.exe
 ./unitTest3.exe
+```
+
+`unitTest4.exe` exercises DDNO metadata-label lookup, one-hole record
+selection, signed alpha/beta MO loading, and expected rejection of
+multielectron or attachment metadata. If `GTests/cn-.ddno.faf` is present, it
+also checks the generated DDNO FAF directly:
+
+```sh
+make unitTest4.exe
+./unitTest4.exe
 ```
