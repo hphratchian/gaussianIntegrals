@@ -23,9 +23,9 @@
 #
 FCPATH := $(FC)
 FC := $(notdir $(FCPATH))
-#FC          = nvfortran
+FC          = nvfortran
 #FC         ?= gfortran
-FC          = gfortran
+#FC          = gfortran
 MQCDir      = $(mqcinstall)
 LIBSALGEBRA = -llapack -lblas
 USEOMP      = yes
@@ -48,7 +48,7 @@ else ifeq ($(FC),nvfortran)
   ifeq ($(USEOMP),yes)
     OMPFLAGS = -mp
   endif
-  LIBS    = $(LIBSALGEBRA) -L$(MQCLIB)
+  LIBS    = $(MQCLIB)/libmqc.a $(LIBSALGEBRA)
   FCFLAGS = -Mallocatable=03 -r8 -i8 $(OMPFLAGS)
 else
   $(error Unsupported Fortran compiler "$(FC)". Please set FC to gfortran or nvfortran.)
@@ -56,7 +56,7 @@ endif
 #
 # The 'all' rule.
 #
-all: unitTest1.exe unitTest2.exe unitTest3.exe unitTest4.exe
+all: unitTest1.exe unitTest2.exe unitTest3.exe unitTest4.exe pad.exe
 #hph all: basisCounting.exe gbs.exe pad.exe unitTest1.exe
 .PHONY: test test-unit test-pad update-pad-refs
 #

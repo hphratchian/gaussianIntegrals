@@ -539,28 +539,32 @@
       implicit none
       character(len=*),intent(in)::fafName
       type(pad_options),intent(in)::options
+      character(len=1),parameter::lineContinuation=achar(92)
 !
  1000 format(/,1x,'Reproducible command line:',/)
- 1010 format(3x,'./pad.exe -faf ',A,' \')
- 1020 format(5x,'-dyson-mo ',i0,' \')
- 1030 format(5x,'-photon-ev ',es24.16,' \')
- 1040 format(5x,'-binding-ev ',es24.16,' \')
- 1050 format(5x,'-n-theta ',i0,' -n-grid ',i0,' -quad ',i0,' \')
- 1060 format(5x,'-pe-type ',i0,' -lab-frame ',i0,' \')
- 1070 format(5x,'-lab-theta ',i0,' -lab-phi ',i0,' \')
- 1080 format(5x,'-lab-alignment ',es24.16,' -n-chi ',i0,' \')
+ 1010 format(3x,'./pad.exe -faf ',A,1x,A)
+ 1020 format(5x,'-dyson-mo ',i0,1x,A)
+ 1030 format(5x,'-photon-ev ',es24.16,1x,A)
+ 1040 format(5x,'-binding-ev ',es24.16,1x,A)
+ 1050 format(5x,'-n-theta ',i0,' -n-grid ',i0,' -quad ',i0,1x,A)
+ 1060 format(5x,'-pe-type ',i0,' -lab-frame ',i0,1x,A)
+ 1070 format(5x,'-lab-theta ',i0,' -lab-phi ',i0,1x,A)
+ 1080 format(5x,'-lab-alignment ',es24.16,' -n-chi ',i0,1x,A)
  1090 format(5x,'-lmax ',i0,' -threads ',i0,/)
 !
       write(iOut,1000)
-      write(iOut,1010) TRIM(fafName)
-      if(options%dysonMOIndex.ne.0) write(iOut,1020) options%dysonMOIndex
-      write(iOut,1030) options%photonEnergyEV
-      write(iOut,1040) options%bindingEnergyEV
+      write(iOut,1010) TRIM(fafName),lineContinuation
+      if(options%dysonMOIndex.ne.0) write(iOut,1020)  &
+        options%dysonMOIndex,lineContinuation
+      write(iOut,1030) options%photonEnergyEV,lineContinuation
+      write(iOut,1040) options%bindingEnergyEV,lineContinuation
       write(iOut,1050) options%nGridPointsTheta,options%nGridPointsM,  &
-        options%quadratureType
-      write(iOut,1060) options%iPEType,options%labFrameType
-      write(iOut,1070) options%nLabFrameTheta,options%nLabFramePhi
-      write(iOut,1080) options%labFrameAlignment,options%nChi
+        options%quadratureType,lineContinuation
+      write(iOut,1060) options%iPEType,options%labFrameType,lineContinuation
+      write(iOut,1070) options%nLabFrameTheta,options%nLabFramePhi,  &
+        lineContinuation
+      write(iOut,1080) options%labFrameAlignment,options%nChi,  &
+        lineContinuation
       write(iOut,1090) options%lMax,options%nOMP
 !
       return
