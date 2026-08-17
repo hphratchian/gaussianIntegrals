@@ -855,7 +855,7 @@
       real(kind=real64),dimension(:),allocatable::lWeights0,lWeights90,  &
         lWeights0Tmp,lWeights90Tmp
       real(kind=real64),dimension(:),allocatable::quadWeightsM,  &
-        MSquaredList,dysonCoeffs
+        MSquaredList,dysonCoeffs,dysonValuesOnGrid
       real(kind=real64),dimension(:,:),allocatable::quadGridM
       logical::foundTheta90
       type(mqc_gtoBasisSet)::basisSet
@@ -1007,6 +1007,18 @@
         'M quadrature setup',tEnd1-tStart1
       if(options%printLevel.ge.PAD_PRINT_NORMAL) flush(iOut)
 !
+!     Evaluate the selected Dyson orbital once on the fixed quadrature grid.
+!     Lab-frame, chi, theta, and photoelectron-energy changes do not alter
+!     these values, so reuse them throughout the production plane-wave path.
+!
+      tStart1 = omp_get_wtime()
+      call evaluateMOOnQuadratureGrid(dysonCoeffs,quadGridM,basisSet,  &
+        dysonValuesOnGrid)
+      tEnd1 = omp_get_wtime()
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) write(iOut,8998)  &
+        'Dyson values on M grid',tEnd1-tStart1
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) flush(iOut)
+!
 !     Fill the theta grid for the PAD scan.
 !
       thetaStart = mqc_float(0)
@@ -1030,8 +1042,10 @@
 !     Test that the chosen MO is normalized on the quadrature grid.
 !
       tStart1 = omp_get_wtime()
-      results%dysonSelfOverlap = moInnerProductNumericalIntegration(  &
-        dysonCoeffs,quadGridM,quadWeightsM,basisSet)
+      results%dysonSelfOverlap = dot_product(quadWeightsM,  &
+        dysonValuesOnGrid*dysonValuesOnGrid)
+      if(abs(results%dysonSelfOverlap).lt.mqc_small)  &
+        results%dysonSelfOverlap = mqc_float(0)
       if(options%printLevel.ge.PAD_PRINT_NORMAL)  &
         write(iOut,2500) results%dysonSelfOverlap
       tEnd1 = omp_get_wtime()
@@ -1068,7 +1082,7 @@
             MSquaredList = dysonPlaneWaveMatrixElementSquaredThetaList(  &
               results%theta,results%kMag,epsilonVec,uChi,  &
               dysonCoeffs,basisSet,quadGridM,  &
-              quadWeightsM)
+              quadWeightsM,dysonValuesOnGrid)
             tEnd2 = omp_get_wtime()
             timeThetaList = timeThetaList+tEnd2-tStart2
             MSquared0 = MSquaredList(1)
@@ -1079,7 +1093,7 @@
               MSquared90 = dysonPlaneWaveMatrixElementSquared(  &
                 Pi/mqc_float(2),results%kMag,epsilonVec,uChi,  &
                 dysonCoeffs,basisSet,quadGridM,  &
-                quadWeightsM)
+                quadWeightsM,dysonValuesOnGrid)
               tEnd2 = omp_get_wtime()
               timeSingleAngles = timeSingleAngles+tEnd2-tStart2
             endIf

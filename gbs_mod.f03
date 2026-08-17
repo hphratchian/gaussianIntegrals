@@ -427,6 +427,50 @@
 
 
 !
+!PROCEDURE evaluateMOOnQuadratureGrid
+      subroutine evaluateMOOnQuadratureGrid(moCoeffs,quadraturePoints,  &
+        aoBasisSet,moValuesOnGrid)
+!
+!     This routine evaluates one MO coefficient vector once on every point of
+!     a Cartesian quadrature-point list. The returned intrinsic vector can be
+!     reused by numerical kernels whose geometry changes while the orbital and
+!     quadrature grid remain fixed. Coordinates are in bohr.
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      real(kind=real64),dimension(:),intent(in)::moCoeffs
+      real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
+      class(mqc_gtoBasisSet),intent(in)::aoBasisSet
+      real(kind=real64),dimension(:),allocatable,intent(out)::  &
+        moValuesOnGrid
+!
+      integer(kind=int64)::i
+      real(kind=real64),dimension(:),allocatable::aoBasisValues
+!
+      if(Size(quadraturePoints,1).ne.3)  &
+        call mqc_error(  &
+          'evaluateMOOnQuadratureGrid: quadrature points must be 3 by n.')
+      if(Size(moCoeffs).ne.aoBasisSet%nBasis)  &
+        call mqc_error(  &
+          'evaluateMOOnQuadratureGrid: coefficient and basis sizes differ.')
+      Allocate(moValuesOnGrid(Size(quadraturePoints,2)))
+!     Each thread owns its AO scratch vector and writes one distinct grid
+!     element. The basis, coefficients, and quadrature points are read-only.
+!$omp parallel do default(none) private(i,aoBasisValues)  &
+!$omp& shared(aoBasisSet,moCoeffs,quadraturePoints,moValuesOnGrid)  &
+!$omp& schedule(dynamic)
+      do i = 1,Size(moValuesOnGrid)
+        call basisSetValuesList1(aoBasisSet,quadraturePoints(:,i),  &
+          aoBasisValues)
+        moValuesOnGrid(i) = dot_product(moCoeffs,aoBasisValues)
+      endDo
+!$omp end parallel do
+!
+      return
+      end subroutine evaluateMOOnQuadratureGrid
+
+!
 !PROCEDURE moInnerProductNumericalIntegration
       function moInnerProductNumericalIntegration(moCoeffsBra,  &
         quadraturePoints,quadratureWeights,aoBasisSet,moCoeffsKet)  &

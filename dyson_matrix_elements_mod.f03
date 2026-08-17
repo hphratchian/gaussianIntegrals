@@ -35,7 +35,8 @@
 !PROCEDURE dysonPlaneWaveMatrixElementSquared
       function dysonPlaneWaveMatrixElementSquared(theta,kMag,  &
         photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,  &
-        quadraturePoints,quadratureWeights) result(MSquared)
+        quadraturePoints,quadratureWeights,dysonValuesOnGrid)  &
+        result(MSquared)
 !
 !     Computes the plane-wave Dyson transition dipole squared for a single
 !     theta value. The photoelectron momentum magnitude, kMag, is in atomic
@@ -51,6 +52,8 @@
       real(kind=real64),dimension(:),intent(in)::dysonCoeffs,  &
         quadratureWeights
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
+      real(kind=real64),dimension(:),intent(in),optional::  &
+        dysonValuesOnGrid
       class(mqc_gtoBasisSet),intent(in)::aoBasisSet
       real(kind=real64)::MSquared
 !
@@ -66,14 +69,23 @@
       kVector = kMag*kVector
       Allocate(MValuesReal(SIZE(quadratureWeights)),  &
         MValuesImaginary(SIZE(quadratureWeights)))
+      if(Present(dysonValuesOnGrid)) then
+        if(Size(dysonValuesOnGrid).ne.Size(quadratureWeights))  &
+          call mqc_error(  &
+            'dysonPlaneWaveMatrixElementSquared: cached Dyson grid size differs.')
+      endIf
 !$omp parallel do private(i,aoBasisValues,w,epsilonDotMu,dysonVal)  &
 !$omp& shared(MValuesReal,MValuesImaginary) schedule(dynamic)
       do i = 1,SIZE(quadratureWeights)
         w = dot_product(kVector,quadraturePoints(:,i))
         epsilonDotMu = dot_product(photonVector,quadraturePoints(:,i))
-        call basisSetValuesList1(aoBasisSet,  &
-          quadraturePoints(:,i),aoBasisValues)
-        dysonVal = dot_product(dysonCoeffs,aoBasisValues)
+        if(Present(dysonValuesOnGrid)) then
+          dysonVal = dysonValuesOnGrid(i)
+        else
+          call basisSetValuesList1(aoBasisSet,  &
+            quadraturePoints(:,i),aoBasisValues)
+          dysonVal = dot_product(dysonCoeffs,aoBasisValues)
+        endIf
         MValuesReal(i) = cos(w)*epsilonDotMu*dysonVal
         MValuesImaginary(i) = -sin(w)*epsilonDotMu*dysonVal
       endDo
@@ -89,7 +101,8 @@
 !PROCEDURE dysonPlaneWaveMatrixElementSquaredThetaList
       function dysonPlaneWaveMatrixElementSquaredThetaList(thetaList,  &
         kMag,photonVector,orthogPlaneVector,dysonCoeffs,aoBasisSet,  &
-        quadraturePoints,quadratureWeights) result(MSquared)
+        quadraturePoints,quadratureWeights,dysonValuesOnGrid)  &
+        result(MSquared)
 !
 !     Computes the plane-wave Dyson transition dipole squared for a list of
 !     theta values. The photoelectron momentum magnitude, kMag, is in atomic
@@ -105,19 +118,23 @@
       real(kind=real64),dimension(:),intent(in)::thetaList,dysonCoeffs,  &
         quadratureWeights
       real(kind=real64),dimension(:,:),intent(in)::quadraturePoints
+      real(kind=real64),dimension(:),intent(in),optional::  &
+        dysonValuesOnGrid
       class(mqc_gtoBasisSet),intent(in)::aoBasisSet
       real(kind=real64),dimension(:),allocatable::MSquared
 !
       integer(kind=int64)::i,j,nTheta,nGrid
-      real(kind=real64)::w,dysonVal,epsilonDotMu,thetaTest
+      real(kind=real64)::w,dysonVal,epsilonDotMu,orthogDotMu,  &
+        thetaTest,weightedDysonDipole
       real(kind=real64),dimension(:),allocatable::aoBasisValues
       real(kind=real64),dimension(:),allocatable::MReal,MImag,  &
-        MRealThread,MImagThread
+        MRealThread,MImagThread,cosTheta,sinTheta
       real(kind=real64),dimension(3)::gridPoint,kVector
 !
       nTheta = SIZE(thetaList)
       nGrid = SIZE(quadratureWeights)
-      Allocate(MSquared(nTheta),MReal(nTheta),MImag(nTheta))
+      Allocate(MSquared(nTheta),MReal(nTheta),MImag(nTheta),  &
+        cosTheta(nTheta),sinTheta(nTheta))
       MSquared = mqc_float(0)
       MReal = mqc_float(0)
       MImag = mqc_float(0)
@@ -125,43 +142,65 @@
         call mqc_normalizeVector(photonVector)
       if(dot_product(orthogPlaneVector,orthogPlaneVector).gt.mqc_small)  &
         call mqc_normalizeVector(orthogPlaneVector)
+      if(Present(dysonValuesOnGrid)) then
+        if(Size(dysonValuesOnGrid).ne.nGrid)  &
+          call mqc_error(  &
+            'dysonPlaneWaveMatrixElementSquaredThetaList: cached Dyson grid size differs.')
+      endIf
+!
+!     The photoelectron direction for each theta depends on the lab-frame
+!     vectors and theta, but not on the spatial quadrature point. Construct
+!     and validate these directions once before the OpenMP grid loop.
+!
+      cosTheta = cos(thetaList)
+      sinTheta = sin(thetaList)
+      do j = 1,nTheta
+        kVector = cosTheta(j)*photonVector+sinTheta(j)*orthogPlaneVector
+        thetaTest = vectorAngle(kVector,photonVector)
+        if(abs(thetaList(j)-thetaTest).gt.0.001_real64) then
+          write(iOut,'(4x,"PROBLEM  ",f6.3,5(",",f6.3))')  &
+            kVector,photonVector
+          call mqc_print(photonVector,iOut,header='photonVector')
+          call mqc_print(orthogPlaneVector,iOut,header='orthogPlaneVector')
+          call mqc_print(kVector,iOut,header='kVector')
+          write(iOut,'(1x,"theta=",f8.4," | thetaTest=",f8.4)')  &
+            thetaList(j),thetaTest
+          write(iOut,'(A,3(3x,f10.3))')' angle = ',  &
+            vectorAngle(kVector,photonVector),thetaList(j),  &
+            dot_product(kVector,photonVector)
+          call mqc_error('STOP: ERROR!')
+        endIf
+      endDo
       if(MEMChecks) call print_memory_usage(iOut,  &
         'dysonPlaneWaveMatrixElementSquaredThetaList before OMP loop.')
 !
+!     Shared arrays are read-only in the grid loop. Each thread owns its AO
+!     scratch space and complex-amplitude accumulators; only their final merge
+!     touches the shared result arrays, under the critical region below.
 !$omp parallel default(shared) private(i,j,w,dysonVal,epsilonDotMu,  &
-!$omp& aoBasisValues,gridPoint,kVector,MRealThread,MImagThread,thetaTest)
-      allocate(aoBasisValues(SIZE(dysonCoeffs)))
+!$omp& orthogDotMu,weightedDysonDipole,aoBasisValues,gridPoint,  &
+!$omp& MRealThread,MImagThread)
+      if(.not.Present(dysonValuesOnGrid))  &
+        allocate(aoBasisValues(SIZE(dysonCoeffs)))
       allocate(MRealThread(nTheta),MImagThread(nTheta))
       MRealThread = mqc_float(0)
       MImagThread = mqc_float(0)
 !$omp do schedule(static)
       do i = 1,nGrid
         gridPoint = quadraturePoints(:,i)
-        call basisSetValuesList1(aoBasisSet,gridPoint,aoBasisValues)
-        dysonVal = dot_product(dysonCoeffs,aoBasisValues)
+        if(Present(dysonValuesOnGrid)) then
+          dysonVal = dysonValuesOnGrid(i)
+        else
+          call basisSetValuesList1(aoBasisSet,gridPoint,aoBasisValues)
+          dysonVal = dot_product(dysonCoeffs,aoBasisValues)
+        endIf
         epsilonDotMu = dot_product(photonVector,gridPoint)
+        orthogDotMu = dot_product(orthogPlaneVector,gridPoint)
+        weightedDysonDipole = epsilonDotMu*dysonVal*quadratureWeights(i)
         do j = 1,nTheta
-          kVector = cos(thetaList(j))*photonVector+  &
-            sin(thetaList(j))*orthogPlaneVector
-          thetaTest = vectorAngle(kVector,photonVector)
-          if(abs(thetaList(j)-thetaTest).gt.0.001_real64) then
-            write(iOut,'(4x,"PROBLEM  ",f6.3,5(",",f6.3))')  &
-              kVector,photonVector
-            call mqc_print(photonVector,iOut,header='photonVector')
-            call mqc_print(orthogPlaneVector,iOut,header='orthogPlaneVector')
-            call mqc_print(kVector,iOut,header='kVector')
-            write(iOut,'(1x,"theta=",f8.4," | thetaTest=",f8.4)')  &
-              thetaList(j),thetaTest
-            write(iOut,'(A,3(3x,f10.3))')' angle = ',  &
-              vectorAngle(kVector,photonVector),thetaList(j),  &
-              dot_product(kVector,photonVector)
-            call mqc_error('STOP: ERROR!')
-          endIf
-          w = kMag*dot_product(kVector,gridPoint)
-          MRealThread(j) = MRealThread(j)+cos(w)*epsilonDotMu*  &
-            dysonVal*quadratureWeights(i)
-          MImagThread(j) = MImagThread(j)-sin(w)*epsilonDotMu*  &
-            dysonVal*quadratureWeights(i)
+          w = kMag*(cosTheta(j)*epsilonDotMu+sinTheta(j)*orthogDotMu)
+          MRealThread(j) = MRealThread(j)+cos(w)*weightedDysonDipole
+          MImagThread(j) = MImagThread(j)-sin(w)*weightedDysonDipole
         endDo
       endDo
 !$omp end do
@@ -169,7 +208,7 @@
       MReal = MReal+MRealThread
       MImag = MImag+MImagThread
 !$omp end critical
-      deallocate(aoBasisValues)
+      if(Allocated(aoBasisValues)) deallocate(aoBasisValues)
       deallocate(MRealThread,MImagThread)
 !$omp end parallel
       MSquared = MReal**2+MImag**2
