@@ -273,8 +273,7 @@
       integer(kind=int64)::nCommandLineArgs
 !
       options = pad_options()
-      options%printResults = .false.
-      options%printThetaTable = .false.
+      options%printLevel = PAD_PRINT_NONE
       options%nOMP = nOMP
       nCommandLineArgs = command_argument_count()
       if(nCommandLineArgs.gt.4)  &

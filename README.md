@@ -98,7 +98,7 @@ export mqcinstall=/path/to/mqcPack
 make pad.exe
 ```
 
-`make all` builds the current lightweight unit-test executables,
+`make all` builds `pad.exe` and the current lightweight unit-test executables:
 `unitTest1.exe`, `unitTest2.exe`, `unitTest3.exe`, and `unitTest4.exe`.
 
 ## Test Targets
@@ -110,7 +110,8 @@ make test-unit
 ```
 
 This runs `unitTest1.exe`, several `unitTest2.exe` lab-frame setup checks,
-`unitTest3.exe` for the spherical Lebedev product quadrature utilities, and
+`unitTest3.exe` for all 19 Lebedev-Laikov rules, point-count selection, and
+spherical product quadrature utilities, and
 `unitTest4.exe` for signed-MO and DDNO Dyson-orbital source selection.
 
 Run both the unit-style checks and the PAD regression set with:
@@ -139,6 +140,7 @@ The current cases cover:
 - Small sphere-grid lab-frame sampling with `nChi = 4`
 - Small axisymmetric lab-frame sampling with `nChi = 1`
 - Small axisymmetric lab-frame sampling with `nChi = 4`
+- All four PAD print levels and invalid print-level rejection
 
 The test harness compares stable scientific summary quantities with tolerances
 rather than diffing full output files, since full output includes wall times.
@@ -154,9 +156,11 @@ make update-pad-refs
 ```sh
 ./pad.exe -faf FAF_FILE [-dyson-mo MO_INDEX] -photon-ev PHOTON_EV \
   -binding-ev BINDING_EV [-n-theta N_THETA] [-n-grid N_GRID] \
-  [-quad QUADRATURE_TYPE] [-pe-type I_PE_TYPE] [-lab-frame LAB_FRAME_TYPE] \
+  [-quad QUADRATURE_TYPE] [-lebedev-points N_ANGULAR] \
+  [-pe-type I_PE_TYPE] [-lab-frame LAB_FRAME_TYPE] \
   [-lab-theta N_LAB_THETA] [-lab-phi N_LAB_PHI] \
-  [-lab-alignment A] [-n-chi N_CHI] [-lmax L_MAX] [-threads N_THREADS]
+  [-lab-alignment A] [-n-chi N_CHI] [-lmax L_MAX] [-threads N_THREADS] \
+  [-print-level terse|normal|extra|debug]
 ```
 
 Options may be written as `-option value`, `--option value`, or
@@ -185,6 +189,7 @@ Numerical and model options:
 | `-n-theta` | `5` | integer, at least `2` | Number of theta values from `0` to `pi`. |
 | `-n-grid` | `101` | integer, at least `2` | Cartesian grid points per axis if FAF grid is absent. |
 | `-quad` | `auto` | `faf`, `cartesian`, `cart`, `lebedev`, `leb`, `auto` | Matrix-element quadrature source. `auto` preserves the historical behavior: use the FAF grid when present, otherwise Cartesian fallback. |
+| `-lebedev-points` | `26` | positive integer, at most `974` | Requested angular point count for the one-center Lebedev product grid. An unavailable count selects the next larger implemented rule. Requests above `974` are errors. Implemented polynomial exactness degree:point-count pairs are `3:6`, `5:14`, `7:26`, `9:38`, `11:50`, `13:74`, `15:86`, `17:110`, `19:146`, `21:170`, `23:194`, `25:230`, `27:266`, `29:302`, `31:350`, `35:434`, `41:590`, `47:770`, and `53:974`. |
 | `-pe-type` | `0` | `0`, `1`, `2` | Photoelectron model flag. Use `0` for production. |
 | `-lab-frame` | `cartesian` | `cartesian`, `sphere`, `axisymmetric`, `0`, `1`, `2` | Built-in lab-frame model. |
 | `-lab-theta` | `5` | integer, at least `3` for `sphere` or `axisymmetric` | Number of sphere-grid theta points when `-lab-frame sphere` or `axisymmetric`. |
@@ -193,6 +198,7 @@ Numerical and model options:
 | `-n-chi` | `36` | positive integer | Number of uniform chi points from `0` to `2*pi` used to rotate the PAD scan plane about each `epsilon`. The default gives `10` degree steps. |
 | `-lmax` | `6` | nonnegative integer | Maximum angular momentum for developmental partial-wave diagnostics. |
 | `-threads` | `1` | positive integer | Number of OpenMP threads requested by the CLI wrapper. |
+| `-print-level` | `normal` | `terse`, `normal`, `extra`, `debug` | Controls PAD output detail. `terse` prints the final scientific summary; `normal` adds setup, provenance, and timing output; `extra` adds theta tables; `debug` also enables applicable development diagnostics. |
 
 Common aliases:
 
@@ -205,6 +211,7 @@ Common aliases:
 | `-n-theta` | `-theta`, `-n-grid-points-theta` |
 | `-n-grid` | `-m-grid`, `-n-grid-points-m` |
 | `-quad` | `-quadrature`, `-m-quadrature`, `-spatial-quadrature` |
+| `-lebedev-points` | `-lebedev-order`, `-angular-points`, `-n-lebedev` |
 | `-pe-type` | `-ipe-type`, `-photoelectron-model` |
 | `-lab-frame` | `-lab-frame-type` |
 | `-lab-theta` | `-n-lab-theta`, `-n-lab-frame-theta` |
@@ -212,6 +219,7 @@ Common aliases:
 | `-lab-alignment` | `-alignment`, `-lab-align`, `-lab-align-p2`, `-lab-alignment-p2`, `-alignment-p2` |
 | `-n-chi` | `-chi` |
 | `-threads` | `-omp`, `-n-omp` |
+| `-print-level` | `-verbosity` |
 
 The older positional form is still accepted for existing scripts:
 
@@ -277,13 +285,29 @@ Run a small debug calculation using the Cartesian trapezoid grid:
   -binding-ev 1.000000 -n-theta 5 -n-grid 21 -quad cart -pe-type 0
 ```
 
-Run a small calculation using the one-center Lebedev product grid with current
-default radial and angular settings:
+Run a calculation using the one-center Lebedev product grid. The angular
+point count is independently selectable and is combined with the current
+Gauss-Legendre radial default:
 
 ```sh
 ./pad.exe -faf GTests/006.faf -dyson-mo 1 -photon-ev 1.100000 \
-  -binding-ev 1.000000 -n-theta 5 -quad leb -pe-type 0
+  -binding-ev 1.000000 -n-theta 5 -quad leb \
+  -lebedev-points 302 -pe-type 0
 ```
+
+The angular and radial components are separate. The product-grid API also
+supports a trapezoid radial rule for tests, and additional radial rules can be
+added without changing the Lebedev tables or matrix-element kernels.
+The implemented angular point counts are `6`, `14`, `26`, `38`, `50`, `74`,
+`86`, `110`, `146`, `170`, `194`, `230`, `266`, `302`, `350`, `434`, `590`,
+`770`, and `974`. For example, requesting `300` points selects the 302-point
+rule.
+
+Programmatic callers can use
+`lebedevSelectPointCount(requestedPoints,roundUp,capAtMaximum)`. The optional
+`roundUp` argument defaults to `.true.`; setting it to `.false.` selects the
+next smaller rule. An above-maximum request is an error unless the optional
+`capAtMaximum` argument is `.true.`, which selects the 974-point rule.
 
 Run the experimental partial-wave path:
 
@@ -319,7 +343,7 @@ Run the axisymmetric lab-frame model with positive alignment along lab `z`:
 
 ## Output
 
-For each lab-frame orientation, `pad.exe` prints:
+At the default `normal` print level, `pad.exe` reports:
 
 - The photoelectron model flag.
 - The photon, binding, and resulting kinetic energies.
@@ -332,9 +356,13 @@ For each lab-frame orientation, `pad.exe` prints:
 - The electric-field polarization vector, `epsilon`.
 - The reference perpendicular vector used to define the chi-rotated scan
   planes.
-- The theta grid and `I(theta)` values.
-- `I(0)`, `I(90)`, and beta from the parallel/perpendicular ratio.
-- A fitted beta value from the PAD shape.
+- Setup and matrix-element timing information.
+- The final per-orientation and orientation-averaged scientific summary.
+
+The `terse` level prints only the final scientific summary. The `extra` level
+adds the theta grid, `I(theta)` values, `I(0)`, `I(90)`, and beta from the
+parallel/perpendicular ratio for each orientation. The `debug` level inherits
+all lower-level output and enables applicable development diagnostics.
 
 The summary table reports the integrated intensity and beta values for each
 orientation. When `N_CHI > 1`, the per-orientation PAD and beta values are
@@ -416,9 +444,13 @@ computed separately for each orientation. Those mean values are useful
 diagnostics, but they are not generally equal to beta from the averaged PAD
 because beta is obtained from ratios of intensities.
 
-For clean one-channel test cases, these should normally agree closely. Large
-disagreements are a useful signal that the angular grid, quadrature, orbital,
-or model assumptions need closer inspection.
+The recommended primary reported value is `averageBetaFit`, printed as
+`Beta from averaged PAD(fit)`, provided its reported `R**2` is close to one and
+the theta grid is converged. `Beta from averaged PAD(ratio)` is an independent
+two-angle consistency check. For clean one-channel test cases, these should
+normally agree closely. A poor `R**2` or a large disagreement is a signal that
+the theta grid, quadrature, orbital, numerical noise, or the assumed
+`1 + beta*P2(cos(theta))` angular form needs closer inspection.
 
 ## Development Notes
 
@@ -426,8 +458,8 @@ Near-term development goals include:
 
 - More robust regression tests for known PAD and beta limits.
 - Cleaner handling of FAF metadata and missing quadrature grids.
-- Wiring the one-center Lebedev product quadrature utility into PAD as an
-  explicit quadrature option after convergence testing.
+- Comparing convergence of the selectable one-center Lebedev product grids
+  against Gaussian FAF and Cartesian grids.
 - Rotational averaging with a fixed molecular frame and rotated lab frame.
 - Validation and extension of the free partial-wave path.
 - Later continuum models suitable for photoionization of neutrals, where the
@@ -459,10 +491,12 @@ model, `2 5 8 0.5` checks a positively aligned axisymmetric model, and `-1`
 checks the programmatic custom lab-frame path. These are lightweight helper
 tests, not a complete validation suite for the PAD calculation.
 
-`unitTest3.exe` exercises the one-center spherical Lebedev product quadrature
-utility, including both trapezoid and Gauss-Legendre radial rules plus helper
-formulas for choosing `rMaxBohr` from the AO primitive tail and `nRadial` from
-the plane-wave wavelength:
+`unitTest3.exe` exercises every Lebedev-Laikov angular rule from 6 points
+(degree 3) through 974 points (degree 53), including analytical Cartesian-
+monomial exactness checks. It also tests the one-center product grid with both
+trapezoid and Gauss-Legendre radial rules plus helper formulas for choosing
+`rMaxBohr` from the AO primitive tail and `nRadial` from the plane-wave
+wavelength:
 
 ```sh
 make unitTest3.exe

@@ -15,8 +15,13 @@
       use iso_fortran_env
       use mqc_general
       use gbs_mod
+      use lebedev_grid_mod, only: LEBEDEV_EXACTNESS_DEGREES,  &
+        LEBEDEV_POINT_COUNTS,N_LEBEDEV_RULES,lebedevRuleDegree,  &
+        lebedevSelectPointCount
       implicit none
       real(kind=real64),parameter::tolAngular=1.0e-10_real64
+      real(kind=real64),parameter::tolPolynomial=2.0e-10_real64
+      integer(kind=int64)::iRule
 !
 !     Format statements.
 !
@@ -30,9 +35,11 @@
       write(iOut,1000)
       call mqc_version_print(iOut)
 !
-      call runLebedevAngularCase(6_int64)
-      call runLebedevAngularCase(14_int64)
-      call runLebedevAngularCase(26_int64)
+      do iRule = 1,N_LEBEDEV_RULES
+        call runLebedevAngularCase(LEBEDEV_POINT_COUNTS(iRule),  &
+          LEBEDEV_EXACTNESS_DEGREES(iRule))
+      endDo
+      call runLebedevSelectionCase()
       call runSphericalProductCase('trapezoid',QUAD_RADIAL_TRAPEZOID,  &
         801_int64,26_int64,1.0e-5_real64)
       call runSphericalProductCase('gauss-legendre',  &
@@ -44,27 +51,27 @@
       contains
 
 !PROCEDURE runLebedevAngularCase
-      subroutine runLebedevAngularCase(lebedevOrder)
+      subroutine runLebedevAngularCase(lebedevPoints,exactnessDegree)
 !
-!     This routine checks angular Lebedev grid normalization and low-order
-!     spherical moments.
+!     This routine checks one angular Lebedev grid's normalization, spherical
+!     moments, and polynomial exactness through its claimed degree.
 !
 !
 !     H. P. Hratchian, 2026.
 !
       implicit none
-      integer(kind=int64),intent(in)::lebedevOrder
+      integer(kind=int64),intent(in)::lebedevPoints,exactnessDegree
       integer(kind=int64)::i
       real(kind=real64)::weightSum
       real(kind=real64),dimension(3)::firstMoment,secondMoment
       real(kind=real64),dimension(:),allocatable::angularWeights
       real(kind=real64),dimension(:,:),allocatable::angularGrid
 !
-      call setup_lebedev_angular_grid(lebedevOrder,angularGrid,  &
+      call setup_lebedev_angular_grid(lebedevPoints,angularGrid,  &
         angularWeights)
-      if(Size(angularWeights).ne.lebedevOrder) then
+      if(Size(angularWeights).ne.lebedevPoints) then
         write(iOut,*)' Size(angularWeights) = ',Size(angularWeights)
-        write(iOut,*)' lebedevOrder         = ',lebedevOrder
+        write(iOut,*)' lebedevPoints        = ',lebedevPoints
         call mqc_error('unitTest3: unexpected Lebedev grid size.')
       endIf
       weightSum = SUM(angularWeights)
@@ -77,8 +84,9 @@
         secondMoment = secondMoment+angularWeights(i)*  &
           angularGrid(:,i)*angularGrid(:,i)
       endDo
-      write(iOut,'(1x,''Lebedev order '',i4,3x,''angular weight sum = '',f20.10)')  &
-        lebedevOrder,weightSum
+      write(iOut,'(1x,''Lebedev points '',i4,3x,''degree = '',i3,3x,  &
+        ''angular weight sum = '',f20.10)') lebedevPoints,exactnessDegree,  &
+        weightSum
       call assertNear(weightSum,mqc_float(4)*Pi,tolAngular,  &
         'Lebedev angular weight sum')
       call assertVectorNear(firstMoment,[ mqc_float(0),mqc_float(0),  &
@@ -86,9 +94,121 @@
       call assertVectorNear(secondMoment,[ mqc_float(4)*Pi/mqc_float(3),  &
         mqc_float(4)*Pi/mqc_float(3),mqc_float(4)*Pi/mqc_float(3) ],  &
         tolAngular,'Lebedev angular second moment')
+      if(lebedevRuleDegree(lebedevPoints).ne.exactnessDegree)  &
+        call mqc_error('unitTest3: Lebedev degree lookup mismatch.')
+      call checkLebedevPolynomialExactness(angularGrid,angularWeights,  &
+        exactnessDegree)
 !
       return
       end subroutine runLebedevAngularCase
+
+
+!PROCEDURE runLebedevSelectionCase
+      subroutine runLebedevSelectionCase()
+!
+!     This routine checks exact, upward, downward, and capped Lebedev point-
+!     count selection.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+!
+      if(lebedevSelectPointCount(26_int64).ne.26_int64)  &
+        call mqc_error('unitTest3: exact Lebedev selection failed.')
+      if(lebedevSelectPointCount(27_int64).ne.38_int64)  &
+        call mqc_error('unitTest3: upward Lebedev selection failed.')
+      if(lebedevSelectPointCount(27_int64,roundUp=.false.).ne.26_int64)  &
+        call mqc_error('unitTest3: downward Lebedev selection failed.')
+      if(lebedevSelectPointCount(2000_int64,  &
+        capAtMaximum=.true.).ne.974_int64)  &
+        call mqc_error('unitTest3: capped Lebedev selection failed.')
+      if(lebedevSelectPointCount(1_int64).ne.6_int64)  &
+        call mqc_error('unitTest3: minimum Lebedev selection failed.')
+!
+      return
+      end subroutine runLebedevSelectionCase
+
+
+!PROCEDURE checkLebedevPolynomialExactness
+      subroutine checkLebedevPolynomialExactness(angularGrid,angularWeights,  &
+        exactnessDegree)
+!
+!     This routine integrates every Cartesian monomial through the claimed
+!     Lebedev exactness degree and compares it with the analytical sphere
+!     integral.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      integer(kind=int64),intent(in)::exactnessDegree
+      real(kind=real64),dimension(:,:),intent(in)::angularGrid
+      real(kind=real64),dimension(:),intent(in)::angularWeights
+      integer(kind=int64)::iX,iY,iZ
+      real(kind=real64)::actual,error,expected,tolerance
+!
+      do iX = 0,exactnessDegree
+        do iY = 0,exactnessDegree-iX
+          do iZ = 0,exactnessDegree-iX-iY
+            actual = SUM(angularWeights*angularGrid(1,:)**iX*  &
+              angularGrid(2,:)**iY*angularGrid(3,:)**iZ)
+            expected = sphericalMonomialIntegral(iX,iY,iZ)
+            tolerance = tolPolynomial*MAX(mqc_float(1),abs(expected))
+            error = abs(actual-expected)
+            if(error.gt.tolerance) then
+              write(iOut,*)' monomial powers = ',iX,iY,iZ
+              write(iOut,*)' exactnessDegree = ',exactnessDegree
+              write(iOut,*)' actual          = ',actual
+              write(iOut,*)' expected        = ',expected
+              write(iOut,*)' error           = ',error
+              write(iOut,*)' tolerance       = ',tolerance
+              call mqc_error('unitTest3: Lebedev polynomial exactness failed.')
+            endIf
+          endDo
+        endDo
+      endDo
+!
+      return
+      end subroutine checkLebedevPolynomialExactness
+
+
+!PROCEDURE sphericalMonomialIntegral
+      function sphericalMonomialIntegral(iX,iY,iZ) result(integralValue)
+!
+!     This function returns the analytical unit-sphere integral of
+!     x**iX*y**iY*z**iZ.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      integer(kind=int64),intent(in)::iX,iY,iZ
+      integer(kind=int64)::i,nHalf
+      real(kind=real64)::integralValue
+!
+      if(mod(iX,2_int64).ne.0_int64.or.mod(iY,2_int64).ne.0_int64.or.  &
+        mod(iZ,2_int64).ne.0_int64) then
+        integralValue = mqc_float(0)
+        return
+      endIf
+      integralValue = mqc_float(4)*Pi
+      do i = 1,iX/2_int64
+        integralValue = integralValue*mqc_float(2_int64*i-1_int64)
+      endDo
+      do i = 1,iY/2_int64
+        integralValue = integralValue*mqc_float(2_int64*i-1_int64)
+      endDo
+      do i = 1,iZ/2_int64
+        integralValue = integralValue*mqc_float(2_int64*i-1_int64)
+      endDo
+      nHalf = (iX+iY+iZ)/2_int64
+      do i = 1,nHalf+1_int64
+        integralValue = integralValue/mqc_float(2_int64*i-1_int64)
+      endDo
+!
+      return
+      end function sphericalMonomialIntegral
 
 
 !PROCEDURE runSphericalProductCase

@@ -9,9 +9,11 @@
 !     -dyson-mo selects a one-hole DDNO orbital; positive and negative values
 !     select alpha and beta MO columns, respectively:
 !       -faf FILE [-dyson-mo N] -photon-ev EV -binding-ev EV
-!       [-n-theta N] [-n-grid N] [-quad faf|cartesian|lebedev] [-pe-type N]
+!       [-n-theta N] [-n-grid N] [-quad faf|cartesian|lebedev]
+!       [-lebedev-points N] [-pe-type N]
 !       [-lab-frame cartesian|sphere|axisymmetric]
 !       [-lab-theta N] [-lab-phi N] [-lab-alignment A] [-n-chi N]
+!       [-print-level terse|normal|extra|debug]
 !     Programmatic callers may also use PAD_LAB_FRAMES_CUSTOM=-1 with
 !     user-supplied lab-frame vector arrays.
 !
@@ -43,12 +45,15 @@
       tStart = omp_get_wtime()
       call padCommandLine(options,fafName)
       call omp_set_num_threads(options%nOMP)
-      write(iOut,1000)
-      call mqc_version_print(iOut)
-      call padPrintReproducibleCommand(fafName,options)
-      call padPrintOpenMPSettings(options)
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) then
+        write(iOut,1000)
+        call mqc_version_print(iOut)
+        call padPrintReproducibleCommand(fafName,options)
+        call padPrintOpenMPSettings(options)
+      endIf
 !
-      if(MEMChecks) call print_memory_usage(iOut,'At top of PAD.')
+      if(MEMChecks.and.options%printLevel.ge.PAD_PRINT_DEBUG)  &
+        call print_memory_usage(iOut,'At top of PAD.')
 !
 !     Load the FAF and dispatch the reusable PAD driver.
 !
@@ -56,6 +61,7 @@
       call runPADCalculation(faf,options,results)
 !
       tEnd = omp_get_wtime()
-      write(iOut,8999) tEnd-tStart
-      if(MEMChecks) call print_memory_usage(iOut,'End of PAD.')
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) write(iOut,8999) tEnd-tStart
+      if(MEMChecks.and.options%printLevel.ge.PAD_PRINT_DEBUG)  &
+        call print_memory_usage(iOut,'End of PAD.')
       end program pad

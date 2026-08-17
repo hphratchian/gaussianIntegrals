@@ -14,6 +14,7 @@
       use mqc_gaussian
       use memory_utils
       use gbs_mod
+      use lebedev_grid_mod, only: lebedevSelectPointCount
       use dyson_matrix_elements_mod
 !
       implicit none
@@ -25,6 +26,11 @@
       integer(kind=int64),parameter::PAD_QUAD_FAF=0_int64
       integer(kind=int64),parameter::PAD_QUAD_CARTESIAN=1_int64
       integer(kind=int64),parameter::PAD_QUAD_LEBEDEV=2_int64
+      integer(kind=int64),parameter::PAD_PRINT_NONE=-2_int64
+      integer(kind=int64),parameter::PAD_PRINT_TERSE=-1_int64
+      integer(kind=int64),parameter::PAD_PRINT_NORMAL=0_int64
+      integer(kind=int64),parameter::PAD_PRINT_EXTRA=1_int64
+      integer(kind=int64),parameter::PAD_PRINT_DEBUG=2_int64
 !
 !
 !     The pad_options object collects user-facing and model-control options for
@@ -44,8 +50,7 @@
         integer(kind=int64)::labFrameType=PAD_LAB_FRAMES_CARTESIAN
         integer(kind=int64)::nLabFrameTheta=5_int64
         integer(kind=int64)::nLabFramePhi=8_int64
-        logical::printResults=.true.
-        logical::printThetaTable=.true.
+        integer(kind=int64)::printLevel=PAD_PRINT_NORMAL
         real(kind=real64)::photonEnergyEV=0.0_real64
         real(kind=real64)::bindingEnergyEV=0.0_real64
         real(kind=real64)::labFrameAlignment=0.0_real64
@@ -312,6 +317,10 @@
         call padReadIntegerOption(arg,value,options%nGridPointsM)
       case('quad','quadrature','mquadrature','spatialquadrature')
         call padReadQuadratureOption(arg,value,options%quadratureType)
+      case('lebedevpoints','lebedevorder','angularpoints','nlebedev')
+        call padReadIntegerOption(arg,value,options%lebedevOrder)
+        options%lebedevOrder =  &
+          lebedevSelectPointCount(options%lebedevOrder)
       case('petype','ipetype','photoelectronmodel')
         call padReadIntegerOption(arg,value,options%iPEType)
       case('labframe','labframetype')
@@ -329,6 +338,8 @@
         call padReadIntegerOption(arg,value,options%lMax)
       case('nomp','omp','threads')
         call padReadIntegerOption(arg,value,options%nOMP)
+      case('printlevel','verbosity')
+        call padReadPrintLevelOption(arg,value,options%printLevel)
       case default
         call mqc_error('PAD: unknown option '//TRIM(arg)//'.')
       end select
@@ -413,6 +424,39 @@
       end subroutine padReadLabFrameOption
 
 
+!PROCEDURE padReadPrintLevelOption
+      subroutine padReadPrintLevelOption(arg,value,printLevel)
+!
+!     This routine reads a character print-level option.
+!
+!
+!     H. P. Hratchian, 2026.
+!
+      implicit none
+      character(len=*),intent(in)::arg,value
+      integer(kind=int64),intent(out)::printLevel
+!
+      character(len=64)::key
+!
+      call padOptionKey(value,key)
+      select case(TRIM(key))
+      case('terse')
+        printLevel = PAD_PRINT_TERSE
+      case('normal')
+        printLevel = PAD_PRINT_NORMAL
+      case('extra')
+        printLevel = PAD_PRINT_EXTRA
+      case('debug')
+        printLevel = PAD_PRINT_DEBUG
+      case default
+        call mqc_error('PAD: invalid value for '//TRIM(arg)//  &
+          '; expected terse, normal, extra, or debug.')
+      end select
+!
+      return
+      end subroutine padReadPrintLevelOption
+
+
 !PROCEDURE padReadQuadratureOption
       subroutine padReadQuadratureOption(arg,value,quadratureType)
 !
@@ -493,10 +537,13 @@
         'Usage: ./pad.exe -faf FILE [-dyson-mo N] -photon-ev EV -binding-ev EV'
       write(iOut,'(8x,A)')  &
         '[-n-theta N] [-n-grid N] [-quad faf|cartesian|lebedev] [-pe-type N]'
+      write(iOut,'(8x,A)') '[-lebedev-points N]'
       write(iOut,'(8x,A)')  &
         '[-lab-frame cartesian|sphere|axisymmetric] [-lab-theta N] [-lab-phi N]'
       write(iOut,'(8x,A)')  &
         '[-lab-alignment A] [-n-chi N] [-lmax N] [-threads N]'
+      write(iOut,'(8x,A)')  &
+        '[-print-level terse|normal|extra|debug]'
       write(iOut,'(1x,A)')  &
         'Legacy positional arguments are still accepted.'
       write(iOut,'(1x,A)')  &
@@ -540,6 +587,7 @@
       character(len=*),intent(in)::fafName
       type(pad_options),intent(in)::options
       character(len=1),parameter::lineContinuation=achar(92)
+      character(len=6)::printLevelName
 !
  1000 format(/,1x,'Reproducible command line:',/)
  1010 format(3x,'./pad.exe -faf ',A,1x,A)
@@ -547,11 +595,21 @@
  1030 format(5x,'-photon-ev ',es24.16,1x,A)
  1040 format(5x,'-binding-ev ',es24.16,1x,A)
  1050 format(5x,'-n-theta ',i0,' -n-grid ',i0,' -quad ',i0,1x,A)
+ 1055 format(5x,'-lebedev-points ',i0,1x,A)
  1060 format(5x,'-pe-type ',i0,' -lab-frame ',i0,1x,A)
  1070 format(5x,'-lab-theta ',i0,' -lab-phi ',i0,1x,A)
  1080 format(5x,'-lab-alignment ',es24.16,' -n-chi ',i0,1x,A)
- 1090 format(5x,'-lmax ',i0,' -threads ',i0,/)
+ 1090 format(5x,'-lmax ',i0,' -threads ',i0,' -print-level ',A,/)
 !
+      if(options%printLevel.ge.PAD_PRINT_DEBUG) then
+        printLevelName = 'debug'
+      else if(options%printLevel.ge.PAD_PRINT_EXTRA) then
+        printLevelName = 'extra'
+      else if(options%printLevel.ge.PAD_PRINT_NORMAL) then
+        printLevelName = 'normal'
+      else
+        printLevelName = 'terse'
+      endIf
       write(iOut,1000)
       write(iOut,1010) TRIM(fafName),lineContinuation
       if(options%dysonMOIndex.ne.0) write(iOut,1020)  &
@@ -560,12 +618,13 @@
       write(iOut,1040) options%bindingEnergyEV,lineContinuation
       write(iOut,1050) options%nGridPointsTheta,options%nGridPointsM,  &
         options%quadratureType,lineContinuation
+      write(iOut,1055) options%lebedevOrder,lineContinuation
       write(iOut,1060) options%iPEType,options%labFrameType,lineContinuation
       write(iOut,1070) options%nLabFrameTheta,options%nLabFramePhi,  &
         lineContinuation
       write(iOut,1080) options%labFrameAlignment,options%nChi,  &
         lineContinuation
-      write(iOut,1090) options%lMax,options%nOMP
+      write(iOut,1090) options%lMax,options%nOMP,TRIM(printLevelName)
 !
       return
       end subroutine padPrintReproducibleCommand
@@ -871,7 +930,7 @@
       call padComputePhotoelectronEnergyAndK(options,  &
         results%photoelectronEnergyEV,results%photoelectronEnergyHartree,  &
         results%kMag)
-      if(options%printResults) then
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) then
         write(iOut,1200) options%iPEType
         write(iOut,1210) options%photonEnergyEV
         write(iOut,1220) options%bindingEnergyEV
@@ -890,7 +949,7 @@
       results%labFrameWeightSum = SUM(results%labFrameWeights)
       if(results%labFrameWeightSum.le.mqc_small)  &
         call mqc_error('PAD: lab-frame weights sum to zero.')
-      if(options%printResults) then
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) then
         write(iOut,1250) options%labFrameType
         write(iOut,1260) nIntPlanes,results%labFrameWeightSum
       endIf
@@ -901,7 +960,7 @@
       results%chiWeightSum = SUM(results%chiWeights)
       if(results%chiWeightSum.le.mqc_small)  &
         call mqc_error('PAD: chi quadrature weights sum to zero.')
-      if(options%printResults) write(iOut,1270) results%nChi,  &
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) write(iOut,1270) results%nChi,  &
         results%chiWeightSum
       Allocate(results%thetaIntegratedIntensity(nIntPlanes),  &
         results%solidAngleIntegratedIntensity(nIntPlanes),  &
@@ -932,7 +991,7 @@
         results%ddnoParticleHoleCounts)
       results%dysonFromDDNO = options%dysonMOIndex.eq.0
       dysonCoeffs = dysonOrbital
-      if(options%printResults) then
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) then
         write(iOut,1280) TRIM(results%dysonSourceLabel)
         if(results%dysonFromDDNO) write(iOut,1290)  &
           results%ddnoParticleHoleCounts
@@ -944,9 +1003,9 @@
       call buildPADMatrixElementQuadrature(faf,options,results%kMag,  &
         quadGridM,quadWeightsM)
       tEnd1 = omp_get_wtime()
-      if(options%printResults) write(iOut,8998)  &
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) write(iOut,8998)  &
         'M quadrature setup',tEnd1-tStart1
-      if(options%printResults) flush(iOut)
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) flush(iOut)
 !
 !     Fill the theta grid for the PAD scan.
 !
@@ -955,9 +1014,9 @@
       call setup_quadrature_trapezoid1d(options%nGridPointsTheta,  &
         stepSizeTheta,thetaStart,results%theta,results%thetaWeights)
       results%thetaSolidAngleWeights = sin(results%theta)*results%thetaWeights
-      if(options%printResults) write(iOut,2000)  &
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) write(iOut,2000)  &
         'theta',options%nGridPointsTheta,stepSizeTheta
-      if(options%printResults) flush(iOut)
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) flush(iOut)
       foundTheta90 = .false.
       indexTheta90 = 0
       thetaMatchTol = sqrt(mqc_small)
@@ -973,10 +1032,12 @@
       tStart1 = omp_get_wtime()
       results%dysonSelfOverlap = moInnerProductNumericalIntegration(  &
         dysonCoeffs,quadGridM,quadWeightsM,basisSet)
-      if(options%printResults) write(iOut,2500) results%dysonSelfOverlap
+      if(options%printLevel.ge.PAD_PRINT_NORMAL)  &
+        write(iOut,2500) results%dysonSelfOverlap
       tEnd1 = omp_get_wtime()
-      if(options%printResults) write(iOut,8998) 'norm test',tEnd1-tStart1
-      if(options%printResults) flush(iOut)
+      if(options%printLevel.ge.PAD_PRINT_NORMAL)  &
+        write(iOut,8998) 'norm test',tEnd1-tStart1
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) flush(iOut)
 !
 !     Evaluate the PAD for each lab-frame orientation.
 !
@@ -987,7 +1048,7 @@
         call buildTransverseBasis(results%epsilonVector(:,i),  &
           results%kPlaneVector(:,i),epsilonUnit,uBasis,vBasis)
         results%epsilonVector(:,i) = epsilonUnit
-        if(options%printResults) write(iOut,1100) i,  &
+        if(options%printLevel.ge.PAD_PRINT_NORMAL) write(iOut,1100) i,  &
           results%epsilonVector(:,i),results%kPlaneVector(:,i)
         results%intensityTheta(:,i) = mqc_float(0)
         results%intensity0(i) = mqc_float(0)
@@ -1063,7 +1124,7 @@
         endIf
 !
         tEnd1 = omp_get_wtime()
-        if(options%printResults) then
+        if(options%printLevel.ge.PAD_PRINT_NORMAL) then
           write(iOut,8998) 'single-angle MSquared calls',timeSingleAngles
           write(iOut,8998) 'theta-list MSquared calls',timeThetaList
           if(results%nChi.gt.1) then
@@ -1072,7 +1133,8 @@
             write(iOut,8998) 'MSquared(theta) list',tEnd1-tStart1
           endIf
         endIf
-        if(options%iPEType.eq.2.and.options%printResults) then
+        if(options%iPEType.eq.2.and.  &
+          options%printLevel.ge.PAD_PRINT_DEBUG) then
           write(iOut,3200) '0 ',lWeights0
           write(iOut,3200) '90',lWeights90
         endIf
@@ -1090,7 +1152,7 @@
         results%betaValsParaPerp(i) = betaParaPerp(results%intensity0(i),  &
           results%intensity90(i))
 !
-        if(options%printResults.and.options%printThetaTable) then
+        if(options%printLevel.ge.PAD_PRINT_EXTRA) then
           write(iOut,3000) results%kMag
           do j = 1,options%nGridPointsTheta
             write(iOut,3010) results%theta(j),results%intensityTheta(j,i)
@@ -1130,7 +1192,7 @@
 !
 !     Print the summary.
 !
-      if(options%printResults) then
+      if(options%printLevel.ge.PAD_PRINT_TERSE) then
         write(iOut,3500) results%kMag
         do i = 1,nIntPlanes
           write(iOut,3510) TRIM(results%intPlaneLabels(i)),  &
@@ -1176,7 +1238,8 @@
           foundOut=found)
         if(found) then
           call buildPADFAFQuadrature(quadTmp,quadGridM,quadWeightsM)
-          if(options%printResults) write(iOut,'(1x,A,3x,i12)')  &
+          if(options%printLevel.ge.PAD_PRINT_NORMAL)  &
+            write(iOut,'(1x,A,3x,i12)')  &
             'FAF M quadrature',SIZE(quadWeightsM)
         else
           call buildPADCartesianQuadrature(options,quadGridM,quadWeightsM)
@@ -1188,7 +1251,8 @@
         if(.not.found)  &
           call mqc_error('PAD: requested FAF quadrature, but no 3D Quadrature Grid was found.')
         call buildPADFAFQuadrature(quadTmp,quadGridM,quadWeightsM)
-        if(options%printResults) write(iOut,'(1x,A,3x,i12)')  &
+        if(options%printLevel.ge.PAD_PRINT_NORMAL)  &
+          write(iOut,'(1x,A,3x,i12)')  &
           'FAF M quadrature',SIZE(quadWeightsM)
 !
       case(PAD_QUAD_CARTESIAN)
@@ -1259,7 +1323,8 @@
         quadWeightsM(options%nGridPointsM**3))
       call setup_quadrature_trapezoid3d(options%nGridPointsM,  &
         stepSizeIntM,cartStart,quadGridM,quadWeightsM)
-      if(options%printResults) write(iOut,'(1x,A,3x,i12,3x,A,es14.6)')  &
+      if(options%printLevel.ge.PAD_PRINT_NORMAL)  &
+        write(iOut,'(1x,A,3x,i12,3x,A,es14.6)')  &
         'Cartesian M quadrature',options%nGridPointsM**3,'step',  &
         stepSizeIntM
 !
@@ -1298,11 +1363,11 @@
       call setup_quadrature_lebedev_spherical(originBohr,rMaxBohr,nRadial,  &
         options%lebedevOrder,options%lebedevRadialRule,quadGridM,  &
         quadWeightsM)
-      if(options%printResults) then
+      if(options%printLevel.ge.PAD_PRINT_NORMAL) then
         write(iOut,'(1x,A,3x,i12)') 'Lebedev M quadrature',  &
           SIZE(quadWeightsM)
         write(iOut,'(3x,A,i0,3x,A,i0,3x,A,es14.6)')  &
-          'lebedevOrder=',options%lebedevOrder,'nRadial=',nRadial,  &
+          'lebedevPoints=',options%lebedevOrder,'nRadial=',nRadial,  &
           'rMaxBohr=',rMaxBohr
       endIf
 !

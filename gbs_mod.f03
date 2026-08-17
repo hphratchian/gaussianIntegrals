@@ -5,6 +5,8 @@
 !
       use iso_fortran_env
       use mqc_general
+      use lebedev_grid_mod, only: buildLebedevAngularGrid =>  &
+        setup_lebedev_angular_grid
 
 !hph+
 !      use mqc_integrals1
@@ -255,65 +257,22 @@
 
 
 !PROCEDURE setup_lebedev_angular_grid
-      subroutine setup_lebedev_angular_grid(lebedevOrder,angularGrid,  &
+      subroutine setup_lebedev_angular_grid(lebedevPoints,angularGrid,  &
         angularWeights)
 !
-!     This routine builds selected low-order Lebedev angular grids on the unit
-!     sphere. The returned angular weights include the 4*pi solid-angle factor.
+!     This compatibility wrapper returns a selected Lebedev-Laikov angular
+!     grid on the unit sphere. The point count selects the rule, and the
+!     angular weights include the 4*pi solid-angle factor.
 !
 !
 !     H. P. Hratchian, 2026.
 !
-!
       implicit none
-      integer(kind=int64),intent(in)::lebedevOrder
+      integer(kind=int64),intent(in)::lebedevPoints
       real(kind=real64),dimension(:,:),allocatable,intent(out)::angularGrid
       real(kind=real64),dimension(:),allocatable,intent(out)::angularWeights
-      integer(kind=int64)::idx
-      real(kind=real64)::a,wAxis,wEdge,wCube
 !
-      select case(lebedevOrder)
-      case(6)
-        Allocate(angularGrid(3,6),angularWeights(6))
-        wAxis = mqc_float(4)*Pi/mqc_float(6)
-        idx = 0
-        call addLebedevPoint(angularGrid,angularWeights,idx,  &
-          [ mqc_float(1),mqc_float(0),mqc_float(0) ],wAxis)
-        call addLebedevPoint(angularGrid,angularWeights,idx,  &
-          [ -mqc_float(1),mqc_float(0),mqc_float(0) ],wAxis)
-        call addLebedevPoint(angularGrid,angularWeights,idx,  &
-          [ mqc_float(0),mqc_float(1),mqc_float(0) ],wAxis)
-        call addLebedevPoint(angularGrid,angularWeights,idx,  &
-          [ mqc_float(0),-mqc_float(1),mqc_float(0) ],wAxis)
-        call addLebedevPoint(angularGrid,angularWeights,idx,  &
-          [ mqc_float(0),mqc_float(0),mqc_float(1) ],wAxis)
-        call addLebedevPoint(angularGrid,angularWeights,idx,  &
-          [ mqc_float(0),mqc_float(0),-mqc_float(1) ],wAxis)
-!
-      case(14)
-        Allocate(angularGrid(3,14),angularWeights(14))
-        wAxis = mqc_float(4)*Pi/mqc_float(15)
-        wCube = mqc_float(4)*Pi*mqc_float(3)/mqc_float(40)
-        idx = 0
-        call addLebedevAxes(angularGrid,angularWeights,idx,wAxis)
-        a = mqc_float(1)/sqrt(mqc_float(3))
-        call addLebedevCube(angularGrid,angularWeights,idx,a,wCube)
-!
-      case(26)
-        Allocate(angularGrid(3,26),angularWeights(26))
-        wAxis = mqc_float(4)*Pi/mqc_float(21)
-        wEdge = mqc_float(4)*Pi*mqc_float(4)/mqc_float(105)
-        wCube = mqc_float(4)*Pi*mqc_float(9)/mqc_float(280)
-        idx = 0
-        call addLebedevAxes(angularGrid,angularWeights,idx,wAxis)
-        a = mqc_float(1)/sqrt(mqc_float(2))
-        call addLebedevEdges(angularGrid,angularWeights,idx,a,wEdge)
-        a = mqc_float(1)/sqrt(mqc_float(3))
-        call addLebedevCube(angularGrid,angularWeights,idx,a,wCube)
-!
-      case default
-        call mqc_error('setup_lebedev_angular_grid: unsupported Lebedev order.')
-      end select
+      call buildLebedevAngularGrid(lebedevPoints,angularGrid,angularWeights)
 !
       return
       end subroutine setup_lebedev_angular_grid
@@ -465,124 +424,6 @@
       return
       end function lebedev_spherical_nradial_from_k
 
-
-!PROCEDURE addLebedevPoint
-      subroutine addLebedevPoint(angularGrid,angularWeights,idx,point,weight)
-!
-!     This small helper appends one angular point and weight to a Lebedev grid.
-!
-!
-!     H. P. Hratchian, 2026.
-!
-      implicit none
-      real(kind=real64),dimension(:,:),intent(inout)::angularGrid
-      real(kind=real64),dimension(:),intent(inout)::angularWeights
-      integer(kind=int64),intent(inout)::idx
-      real(kind=real64),dimension(3),intent(in)::point
-      real(kind=real64),intent(in)::weight
-!
-      idx = idx+1
-      angularGrid(:,idx) = point
-      angularWeights(idx) = weight
-!
-      return
-      end subroutine addLebedevPoint
-
-
-!PROCEDURE addLebedevAxes
-      subroutine addLebedevAxes(angularGrid,angularWeights,idx,weight)
-!
-!     This helper appends the six Cartesian axis points used in low-order
-!     Lebedev grids.
-!
-!
-!     H. P. Hratchian, 2026.
-!
-      implicit none
-      real(kind=real64),dimension(:,:),intent(inout)::angularGrid
-      real(kind=real64),dimension(:),intent(inout)::angularWeights
-      integer(kind=int64),intent(inout)::idx
-      real(kind=real64),intent(in)::weight
-!
-      call addLebedevPoint(angularGrid,angularWeights,idx,  &
-        [ mqc_float(1),mqc_float(0),mqc_float(0) ],weight)
-      call addLebedevPoint(angularGrid,angularWeights,idx,  &
-        [ -mqc_float(1),mqc_float(0),mqc_float(0) ],weight)
-      call addLebedevPoint(angularGrid,angularWeights,idx,  &
-        [ mqc_float(0),mqc_float(1),mqc_float(0) ],weight)
-      call addLebedevPoint(angularGrid,angularWeights,idx,  &
-        [ mqc_float(0),-mqc_float(1),mqc_float(0) ],weight)
-      call addLebedevPoint(angularGrid,angularWeights,idx,  &
-        [ mqc_float(0),mqc_float(0),mqc_float(1) ],weight)
-      call addLebedevPoint(angularGrid,angularWeights,idx,  &
-        [ mqc_float(0),mqc_float(0),-mqc_float(1) ],weight)
-!
-      return
-      end subroutine addLebedevAxes
-
-
-!PROCEDURE addLebedevCube
-      subroutine addLebedevCube(angularGrid,angularWeights,idx,a,weight)
-!
-!     This helper appends the eight cubic diagonal points (a,a,a) with all
-!     sign combinations.
-!
-!
-!     H. P. Hratchian, 2026.
-!
-      implicit none
-      real(kind=real64),dimension(:,:),intent(inout)::angularGrid
-      real(kind=real64),dimension(:),intent(inout)::angularWeights
-      integer(kind=int64),intent(inout)::idx
-      integer(kind=int64)::iSign,jSign,kSign
-      real(kind=real64),intent(in)::a,weight
-!
-      do kSign = -1,1,2
-        do jSign = -1,1,2
-          do iSign = -1,1,2
-            call addLebedevPoint(angularGrid,angularWeights,idx,  &
-              [ mqc_float(iSign)*a,mqc_float(jSign)*a,  &
-                mqc_float(kSign)*a ],weight)
-          endDo
-        endDo
-      endDo
-!
-      return
-      end subroutine addLebedevCube
-
-
-!PROCEDURE addLebedevEdges
-      subroutine addLebedevEdges(angularGrid,angularWeights,idx,a,weight)
-!
-!     This helper appends the twelve points with two nonzero equal-magnitude
-!     coordinates used in the 26-point Lebedev grid.
-!
-!
-!     H. P. Hratchian, 2026.
-!
-      implicit none
-      real(kind=real64),dimension(:,:),intent(inout)::angularGrid
-      real(kind=real64),dimension(:),intent(inout)::angularWeights
-      integer(kind=int64),intent(inout)::idx
-      integer(kind=int64)::iSign,jSign
-      real(kind=real64),intent(in)::a,weight
-!
-      do jSign = -1,1,2
-        do iSign = -1,1,2
-          call addLebedevPoint(angularGrid,angularWeights,idx,  &
-            [ mqc_float(iSign)*a,mqc_float(jSign)*a,mqc_float(0) ],  &
-            weight)
-          call addLebedevPoint(angularGrid,angularWeights,idx,  &
-            [ mqc_float(iSign)*a,mqc_float(0),mqc_float(jSign)*a ],  &
-            weight)
-          call addLebedevPoint(angularGrid,angularWeights,idx,  &
-            [ mqc_float(0),mqc_float(iSign)*a,mqc_float(jSign)*a ],  &
-            weight)
-        endDo
-      endDo
-!
-      return
-      end subroutine addLebedevEdges
 
 
 !

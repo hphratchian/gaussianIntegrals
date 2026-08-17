@@ -193,6 +193,53 @@ for case_spec in "${cases[@]}"; do
   fi
 done
 
+print_level_args=(
+  -faf GTests/006.faf
+  -dyson-mo 1
+  -photon-ev 1.100000
+  -binding-ev 1.000000
+  -n-theta 3
+  -n-grid 11
+  -quad cart
+  -pe-type 0
+  -lab-frame cartesian
+  -n-chi 1
+)
+
+echo "Checking PAD print levels"
+terse_output="$work_dir/print_level_terse.out"
+normal_output="$work_dir/006_cartesian_nchi36.out"
+extra_output="$work_dir/print_level_extra.out"
+debug_output="$work_dir/print_level_debug.out"
+./pad.exe "${print_level_args[@]}" -print-level terse > "$terse_output"
+./pad.exe "${print_level_args[@]}" -print-level extra > "$extra_output"
+./pad.exe "${print_level_args[@]}" -print-level debug > "$debug_output"
+
+if ! grep -q 'Summary of PAD Calculation' "$terse_output" ||  \
+  grep -q 'Photon energy' "$terse_output"; then
+  echo "  terse print-level output is incorrect" >&2
+  failures=$((failures+1))
+fi
+if ! grep -q 'Photon energy' "$normal_output" ||  \
+  grep -q 'Intensity as a Function of Theta' "$normal_output"; then
+  echo "  normal print-level output is incorrect" >&2
+  failures=$((failures+1))
+fi
+if ! grep -q 'Photon energy' "$extra_output" ||  \
+  ! grep -q 'Intensity as a Function of Theta' "$extra_output"; then
+  echo "  extra print-level output is incorrect" >&2
+  failures=$((failures+1))
+fi
+if ! grep -q -- '-print-level debug' "$debug_output" ||  \
+  ! grep -q 'Intensity as a Function of Theta' "$debug_output"; then
+  echo "  debug print-level output is incorrect" >&2
+  failures=$((failures+1))
+fi
+if { ./pad.exe -print-level invalid >/dev/null 2>&1; } 2>/dev/null; then
+  echo "  invalid print-level value was not rejected" >&2
+  failures=$((failures+1))
+fi
+
 if [[ "$failures" -ne 0 ]]; then
   echo "PAD regression tests failed: $failures case(s)." >&2
   exit 1
